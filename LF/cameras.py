@@ -13,6 +13,8 @@ class LFPanel(bpy.types.Panel):
 
     def draw(self, context):
         col = self.layout.column(align=True)
+        if context.scene.lfType == "plane":  
+            col.prop(context.scene, "lfAspect")
         col.prop(context.scene, "lfType")
         col.prop(context.scene, "lfSize")
         col.prop(context.scene, "lfDensity")
@@ -30,7 +32,13 @@ class LFArray(bpy.types.Operator):
         lookAtCenter = False
   
         if context.scene.lfType == "plane":   
-            bmesh.ops.create_grid(bm, x_segments= context.scene.lfDensity, y_segments=context.scene.lfDensity, size=context.scene.lfSize)
+            ratio = 1.0
+            if context.scene.lfAspect == "16:9":
+                ratio = 16.0/9
+            elif context.scene.lfAspect == "4:3":
+                ratio = 4.0/3.0
+            mat = mathutils.Matrix.Scale(ratio, 4, (1.0, 0.0, 0.0))
+            bmesh.ops.create_grid(bm, x_segments= context.scene.lfDensity, y_segments=context.scene.lfDensity, size=context.scene.lfSize, matrix=mat),
         elif context.scene.lfType == "sphere":
             bmesh.ops.create_icosphere(bm, subdivisions=context.scene.lfDensity, diameter=context.scene.lfSize)
             lookAtCenter = True
@@ -74,6 +82,7 @@ def register():
     bpy.utils.register_class(LFRender)
     bpy.utils.register_class(LFPanel)
     bpy.types.Scene.lfType = bpy.props.EnumProperty(name="Type", description="Shape of the LF camera array", items=[("plane","Plane","Planar grid"), ("sphere","Sphere","Spherical grid (icosphere)")])
+    bpy.types.Scene.lfAspect = bpy.props.EnumProperty(name="Aspect", description="Aspect ratio for the camera grid", items=[("16:9", "16:9", ""), ("4:3", "4:3", ""), ("1:1", "1:1", "")])
     bpy.types.Scene.lfSize = bpy.props.FloatProperty(name="Size", description="Scale of the array", default=1.0)
     bpy.types.Scene.lfDensity = bpy.props.IntProperty(name="Density", description="Density of the array", default=8)
     
