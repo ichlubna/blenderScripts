@@ -37,7 +37,7 @@ class LFArray(bpy.types.Operator):
                 ratio = 16.0/9
             elif context.scene.lfAspect == "4:3":
                 ratio = 4.0/3.0
-            mat = mathutils.Matrix.Scale(ratio, 4, (1.0, 0.0, 0.0))
+            mat = mathutils.Matrix.Scale(ratio, 4, (1.0, 0.0, 0.0)) * mathutils.Matrix.Rotation(math.radians(180), 4, 'X') #rotation to place the first cam to top left corner
             bmesh.ops.create_grid(bm, x_segments= context.scene.lfDensity, y_segments=context.scene.lfDensity, size=context.scene.lfSize, matrix=mat),
         elif context.scene.lfType == "sphere":
             bmesh.ops.create_icosphere(bm, subdivisions=context.scene.lfDensity, diameter=context.scene.lfSize)
@@ -65,6 +65,8 @@ class LFRender(bpy.types.Operator):
     bl_idname = "mesh.render"
     bl_label = "Render LF"
     #bl_descripiton = "Render all views to the output folder"
+
+    #TODO animation if more frames are active
 
     def invoke(self, context, event):
         path = bpy.data.scenes["Scene"].render.filepath[:]
