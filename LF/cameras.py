@@ -18,10 +18,13 @@ class LFPanel(bpy.types.Panel):
         col.prop(context.scene, "lfType")
         col.prop(context.scene, "lfSize")
         col.prop(context.scene, "lfDensity")
+        col.prop(context.scene, "lfDepth")
         col.operator("mesh.generate", text="Generate")
         col.operator("mesh.render", text="Render")
 
 class LFArray(bpy.types.Operator):
+    """ Generates the camera grid with given parameters.
+    """
     bl_idname = "mesh.generate"
     bl_label = "Generate LF array"
     bl_options = {"UNDO"}
@@ -62,21 +65,43 @@ class LFArray(bpy.types.Operator):
         return {"FINISHED"}
 
 class LFRender(bpy.types.Operator):
+    """ Renders whole animation (start-end frame), all frames for one cam in one folder.
+        Takes format settings from Render options.
+    """
     bl_idname = "mesh.render"
     bl_label = "Render LF"
-    #bl_descripiton = "Render all views to the output folder"
-
-    #TODO animation if more frames are active
+    bl_descripiton = "Render all views to the output folder"
+    #TODO render depthmaps button
 
     def invoke(self, context, event):
-        path = bpy.data.scenes["Scene"].render.filepath[:]
+        renderInfo = bpy.data.scenes["Scene"].render
+        path = renderInfo.filepath[:]
+        camCount = 0
         for obj in bpy.context.scene.objects:
             if obj.name[:6] == "LF_Cam":
+                camCount += 1
                 bpy.context.scene.camera = obj
-                bpy.data.scenes["Scene"].render.filepath = path+ obj.name[7:]
-                bpy.ops.render.render( write_still=True ) 
+                camPath = path+"/"+obj.name[7:]
+                if not os.path.exists(camPath):
+                    os.makedirs(camPath)
+                #context.window_manager.progress_begin(0,context.scene.lfS)
+                for i in range(bpy.context.scene.frame_start, bpy.context.scene.frame_end+1):
+                    renderInfo.filepath = camPath+"/"+str(i)
+                    bpy.context.scene.frame_set(i)
+                    bpy.ops.render.render( write_still=True ) 
             
         bpy.data.scenes["Scene"].render.filepath = path
+
+        infoFile = open(path+"/info", "w")
+        infoFile.write("Camera count: " + str(camCount))
+        infoFile.write("\nFPS: " + str(renderInfo.fps))
+        infoFile.write("\nFrame count: " + str(bpy.context.scene.frame_end - bpy.context.scene.frame_start))
+        infoFile.write("\nWidth: " + str(int((renderInfo.resolution_x * renderInfo.resolution_percentage)/100)))
+        infoFile.write("\nHeight: " + str(int((renderInfo.resolution_y * renderInfo.resolution_percentage)/100)))
+        #TODO camparams
+        infoFile.close()
+        
+        
         return {"FINISHED"}
 
 def register():
@@ -87,6 +112,7 @@ def register():
     bpy.types.Scene.lfAspect = bpy.props.EnumProperty(name="Aspect", description="Aspect ratio for the camera grid", items=[("16:9", "16:9", ""), ("4:3", "4:3", ""), ("1:1", "1:1", "")])
     bpy.types.Scene.lfSize = bpy.props.FloatProperty(name="Size", description="Scale of the array", default=1.0)
     bpy.types.Scene.lfDensity = bpy.props.IntProperty(name="Density", description="Density of the array", default=8)
+    bpy.types.Scene.lfDepth = bpy.props.BoolProperty(name="Depth maps", description="Will render depth maps too", default=True)
     
 def unregister():
     bpy.utils.unregister_class(LFArray)
