@@ -86,7 +86,7 @@ class LFRender(bpy.types.Operator):
                     os.makedirs(camPath)
                 #context.window_manager.progress_begin(0,context.scene.lfS)
                 for i in range(bpy.context.scene.frame_start, bpy.context.scene.frame_end+1):
-                    renderInfo.filepath = camPath+"/"+str(i)
+                    renderInfo.filepath = camPath+"/"+str(bpy.context.scene.frame_start-i)
                     bpy.context.scene.frame_set(i)
                     bpy.ops.render.render( write_still=True ) 
             
