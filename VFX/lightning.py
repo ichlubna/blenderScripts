@@ -2,18 +2,21 @@ import bpy
 import random
 import math
 
-class LightningGen (bpy.types.NodeCustomGroup):
+class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
     bl_name='LightningGen'
     bl_label='Lightning'
     imageName = 'Lightning' 
 
     def drawBolt (self, bitmap, x0, y0, x1, y1, w, h):
+        
         def drawLine(start, end):
+        
             def setPixel(x,y):
                 offset = (x + int(y*w))*4
                 for i in range(4):
                     bitmap[offset+i] = 1.0
+                    
             def drawPoint(x,y):
                 setPixel(x, y)
                 setPixel(x+1, y)
@@ -48,9 +51,11 @@ class LightningGen (bpy.types.NodeCustomGroup):
                     y += sy        
             drawPoint(x, y)
 
+
+        
         lines = [((x0,y0), (x1,y1))]
         #random.seed(self.seed)
-        randRange = int(self.stability*200)
+        randRange = int((1.0-self.stability)*200)
         for i in range(0,self.complexity):
             tempLines = lines
             lines = []
@@ -95,9 +100,9 @@ class LightningGen (bpy.types.NodeCustomGroup):
         #self.outputs['Image'].default_value = resultNode.outputs[0].default_value
         return
     
-    forking=bpy.props.FloatProperty(name="Forking", description="The probability of forking", min=0.0, max=1.0, default=0.0, update=update_effect)
-    complexity=bpy.props.IntProperty(name="Complexity", description="Number of recursive segments (curves of the bolt)", min=0, max=15, default=0, update=update_effect)
-    stability=bpy.props.FloatProperty(name="Stability", description="How much does the bolt wiggle", min=0.0, max=1.0, default=0.0, update=update_effect)
+    forking=bpy.props.FloatProperty(name="Forking", description="The probability of forking", min=0.0, max=1.0, default=0.3, update=update_effect)
+    complexity=bpy.props.IntProperty(name="Complexity", description="Number of recursive segments (curves of the bolt)", min=10, max=15, default=0, update=update_effect)
+    stability=bpy.props.FloatProperty(name="Stability", description="How much does the bolt wiggle", min=0.0, max=1.0, default=0.5, update=update_effect)
     falloff=bpy.props.FloatProperty(name="Falloff", description="Making the bolt thin at the end", min=0.0, max=1.0, default=0.0, update=update_effect, unit='LENGTH')
     glow=bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=1.0, default=0.0, update=update_effect,)
     seed=bpy.props.IntProperty(name="Seed", description="Random seed affecting the shape of the bolt", min=0, default=0, update=update_effect)
@@ -116,9 +121,14 @@ class LightningGen (bpy.types.NodeCustomGroup):
         self.node_tree.inputs.new("NodeSocketFloat", "End y")
         self.node_tree.outputs.new("NodeSocketColor", "Image")
         
+        resultNode = self.node_tree.nodes.new("CompositorNodeImage")
+        resultNode.label = 'resultImageNode'
+        resultNode.image = bpy.data.images[self.imageName]
+        self.outputs['Image'].default_value = resultNode.outputs[0].default_value
+        
+        self.node_tree.links.new(resultNode.outputs[0],self.node_tree.nodes['Group Output'].inputs[0])
+        
     def draw_buttons(self, context, layout):
-        row=layout.row()
-        row.label("Image: "+self.imageName)
         row=layout.row()
         row.prop(self, 'forking',  text='Forking', slider=1)
         row=layout.row()
