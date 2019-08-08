@@ -10,19 +10,26 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
     def drawBolt (self, bitmap, x0, y0, x1, y1, w, h):
         
-        def drawLine(start, end):
+        def drawLine(start, end, thickness):
         
             def setPixel(x,y):
                 offset = (x + int(y*w))*4
                 for i in range(4):
-                    bitmap[offset+i] = 1.0
+                    try:
+                        bitmap[offset+i] = 1.0
+                    except:
+                        {}
                     
-            def drawPoint(x,y):
-                setPixel(x, y)
-                setPixel(x+1, y)
-                setPixel(x-1, y)
-                setPixel(x, y+1)
-                setPixel(x, y-1)
+            def drawPoint(x,y,radius):
+                for X in range(-radius, radius+1):
+                    for Y in range(-radius, radius+1):
+                        if(X*X+Y*Y <= radius*radius):
+                            setPixel(X+x, Y+y)
+                #setPixel(x, y)
+                #setPixel(x+1, y)
+                #setPixel(x-1, y)
+                #setPixel(x, y+1)
+                #setPixel(x, y-1)
 
             #Bressenham
             dx = abs(end[0] - start[0])
@@ -33,7 +40,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             if dx > dy:
                 err = dx / 2.0
                 while x != end[0]:
-                    drawPoint(x, y)
+                    drawPoint(x, y, thickness)
                     err -= dy
                     if err < 0:
                         y += sy
@@ -42,39 +49,42 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             else:
                 err = dy / 2.0
                 while y != end[1]:
-                    drawPoint(x, y)
+                    drawPoint(x, y, thickness)
 
                     err -= dx
                     if err < 0:
                         x += sx
                         err += dy
                     y += sy        
-            drawPoint(x, y)
+            drawPoint(x, y, thickness)
 
 
         
-        lines = [((x0,y0), (x1,y1))]
-        #random.seed(self.seed)
-        randRange = int((1.0-self.stability)*200)
+        lines = [((x0,y0), (x1,y1), self.thickness)]
+        length = int(math.sqrt(pow(x1-x0,2)+pow(y1-y0,2)))
+        random.seed(self.seed)
+        randRange = int((1.0-self.stability)*int(length/4))
         for i in range(0,self.complexity):
-            tempLines = lines
+            tempLines = lines.copy()
             lines = []
             for line in tempLines:
                 start = line[0]
                 end = line[1]
-                
-                #for better results maybe move new points by normal
+
                 randOffset = ( random.randint(-randRange, randRange), random.randint(-randRange, randRange) )
                 midpoint = ( int((start[0]+end[0])/2) + randOffset[0], int((start[1]+end[1])/2) + randOffset[1] )
-                if random.uniform(0.0, 1.0) < self.forking:
-                    forkEnd  = (end[0]+randOffset[1],end[1]+randOffset[0])
-                    lines.append((midpoint, forkEnd))
+                if random.uniform(0.0, 1.0) < self.forking and i < int(self.complexity/3):
+                    offset = int((random.randint(10,length/4))/math.sqrt((pow(midpoint[1]-end[1],2) + pow(end[0]-midpoint[0],2))))
+                    if(random.randint(0,1)):
+                        offset *= -1;
+                    forkEnd  = (end[0]+(midpoint[1]-end[1])*offset, end[1]+(end[0]-midpoint[0])*offset)
+                    lines.append((midpoint, forkEnd, int(line[2]/2)))
                 
-                lines.append((start, midpoint))
-                lines.append((midpoint, end))
+                lines.append((start, midpoint, line[2]))
+                lines.append((midpoint, end, line[2]))
             randRange = int(randRange/2)
         for line in lines:
-            drawLine(line[0], line[1])
+            drawLine(line[0], line[1], line[2])
         
     def update_effect(self, context):
         #TODO update compositor tree
@@ -100,12 +110,13 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         #self.outputs['Image'].default_value = resultNode.outputs[0].default_value
         return
     
-    forking=bpy.props.FloatProperty(name="Forking", description="The probability of forking", min=0.0, max=1.0, default=0.3, update=update_effect)
-    complexity=bpy.props.IntProperty(name="Complexity", description="Number of recursive segments (curves of the bolt)", min=10, max=15, default=0, update=update_effect)
-    stability=bpy.props.FloatProperty(name="Stability", description="How much does the bolt wiggle", min=0.0, max=1.0, default=0.5, update=update_effect)
-    falloff=bpy.props.FloatProperty(name="Falloff", description="Making the bolt thin at the end", min=0.0, max=1.0, default=0.0, update=update_effect, unit='LENGTH')
-    glow=bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=1.0, default=0.0, update=update_effect,)
-    seed=bpy.props.IntProperty(name="Seed", description="Random seed affecting the shape of the bolt", min=0, default=0, update=update_effect)
+    forking: bpy.props.FloatProperty(name="Forking", description="The probability of forking", min=0.0, max=1.0, default=0.3, update=update_effect)
+    complexity: bpy.props.IntProperty(name="Complexity", description="Number of recursive segments (curves of the bolt)", min=5, max=15, default=5, update=update_effect)
+    stability: bpy.props.FloatProperty(name="Stability", description="How much does the bolt wiggle", min=0.0, max=1.0, default=0.5, update=update_effect)
+    falloff: bpy.props.FloatProperty(name="Falloff", description="Making the bolt thin at the end", min=0.0, max=1.0, default=0.0, update=update_effect, unit='LENGTH')
+    thickness: bpy.props.IntProperty(name="Thickness", description="Overall thickness of the bolt", min=0, max=100, default=5, update=update_effect)
+    glow: bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=1.0, default=0.0, update=update_effect,)
+    seed: bpy.props.IntProperty(name="Seed", description="Random seed affecting the shape of the bolt", min=0, default=0, update=update_effect)
     
     def init(self, context):
         scene = bpy.context.scene
@@ -137,6 +148,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         row.prop(self, 'stability', text='Stability', slider=1)
         row=layout.row()
         row.prop(self, 'falloff', text='Falloff', slider=1)
+        row=layout.row()
+        row.prop(self, 'thickness', text='Thickness', slider=1)
         row=layout.row()
         row.prop(self, 'glow', text='Glow', slider=1)
         row=layout.row()
