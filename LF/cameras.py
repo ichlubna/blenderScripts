@@ -52,9 +52,7 @@ class LFArray(bpy.types.Operator):
             rotation = (0,0,0)
             if lookAtCenter:
                 rotation = direction.to_track_quat('-Z', 'Y').to_euler()
-            bpy.ops.object.camera_add(view_align=False,
-                          location=v.co,
-                          rotation=rotation)  
+            bpy.ops.object.camera_add(location=v.co, rotation=rotation)  
             camera = context.object
             camera.name = "LF_Cam_"+str(v.index)
             
