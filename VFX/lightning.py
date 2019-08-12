@@ -25,11 +25,6 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                     for Y in range(-radius, radius+1):
                         if(X*X+Y*Y <= radius*radius):
                             setPixel(X+x, Y+y)
-                #setPixel(x, y)
-                #setPixel(x+1, y)
-                #setPixel(x-1, y)
-                #setPixel(x, y+1)
-                #setPixel(x, y-1)
 
             #Bressenham
             dx = abs(end[0] - start[0])
@@ -70,14 +65,16 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             for line in tempLines:
                 start = line[0]
                 end = line[1]
-
                 randOffset = ( random.randint(-randRange, randRange), random.randint(-randRange, randRange) )
                 midpoint = ( int((start[0]+end[0])/2) + randOffset[0], int((start[1]+end[1])/2) + randOffset[1] )
                 if random.uniform(0.0, 1.0) < self.forking and i < int(self.complexity/3):
-                    offset = int((random.randint(10,length/4))/math.sqrt((pow(midpoint[1]-end[1],2) + pow(end[0]-midpoint[0],2))))
-                    if(random.randint(0,1)):
-                        offset *= -1;
-                    forkEnd  = (end[0]+(midpoint[1]-end[1])*offset, end[1]+(end[0]-midpoint[0])*offset)
+                    direction = (midpoint[0]-start[0], midpoint[1]-start[1])
+                    angle = random.uniform(0.0,0.9)
+                    if random.uniform(0.0, 1.0) > 0.5:
+                        angle = -angle
+                    cosVal = math.cos(angle)
+                    sinVal = math.sin(angle)
+                    forkEnd = (int(cosVal*direction[0] - sinVal*direction[1])+midpoint[0], int(sinVal*direction[0] + cosVal*direction[1])+midpoint[1])
                     lines.append((midpoint, forkEnd, int(line[2]/2)))
                 
                 lines.append((start, midpoint, line[2]))
@@ -98,6 +95,12 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         self.drawBolt(pixels, 500,500,1400,500, img.size[0], img.size[1])
         img.pixels[:] = pixels    
         img.update()  
+        coreBlurNode = self.node_tree.nodes.get('coreBlurNode')
+        coreBlurNode.size_x = self.coreBlur
+        coreBlurNode.size_y = self.coreBlur
+        glowBlurNode = self.node_tree.nodes.get('glowBlurNode')
+        glowBlurNode.size_x = self.glow
+        glowBlurNode.size_y = self.glow
         #to force backdrop update, dunno how to do it correctly :D              
         self.inputs['Start X'].default_value = self.inputs['Start X'].default_value
         #bpy.context.scene.nodes.node_tree.update()
@@ -115,7 +118,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
     stability: bpy.props.FloatProperty(name="Stability", description="How much does the bolt wiggle", min=0.0, max=1.0, default=0.5, update=update_effect)
     falloff: bpy.props.FloatProperty(name="Falloff", description="Making the bolt thin at the end", min=0.0, max=1.0, default=0.0, update=update_effect, unit='LENGTH')
     thickness: bpy.props.IntProperty(name="Thickness", description="Overall thickness of the bolt", min=0, max=100, default=5, update=update_effect)
-    glow: bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=1.0, default=0.0, update=update_effect,)
+    glow: bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=100.0, default=0.0, update=update_effect)
+    coreBlur: bpy.props.FloatProperty(name="Core blur", description="How sharp the core is", min=0.0, max=30.0, default=5.0, update=update_effect,)
     seed: bpy.props.IntProperty(name="Seed", description="Random seed affecting the shape of the bolt", min=0, default=0, update=update_effect)
     
     def init(self, context):
@@ -132,12 +136,37 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         self.node_tree.inputs.new("NodeSocketFloat", "End y")
         self.node_tree.outputs.new("NodeSocketColor", "Image")
         
-        resultNode = self.node_tree.nodes.new("CompositorNodeImage")
-        resultNode.label = 'resultImageNode'
-        resultNode.image = bpy.data.images[self.imageName]
-        self.outputs['Image'].default_value = resultNode.outputs[0].default_value
+        imageNode = self.node_tree.nodes.new("CompositorNodeImage")
+        imageNode.name = 'resultImageNode'
+        imageNode.image = bpy.data.images[self.imageName]
         
-        self.node_tree.links.new(resultNode.outputs[0],self.node_tree.nodes['Group Output'].inputs[0])
+        coreBlurNode = self.node_tree.nodes.new("CompositorNodeBlur")
+        coreBlurNode.name = 'coreBlurNode'
+        coreBlurNode.filter_type = 'FAST_GAUSS'
+       
+        glowBlurNode = self.node_tree.nodes.new("CompositorNodeBlur")
+        glowBlurNode.name = 'glowBlurNode'
+        glowBlurNode.filter_type = 'FAST_GAUSS'
+        
+        mixNode = self.node_tree.nodes.new("CompositorNodeMixRGB")
+        mixNode.name = 'mixNode'
+        mixNode.blend_type = 'ADD'
+        
+        colorizeNode = self.node_tree.nodes.new("CompositorNodeMixRGB")
+        colorizeNode.name = 'colorizeNode'
+        colorizeNode.blend_type = 'MIX'
+        colorizeNode.inputs[1].default_value = (0.0, 0.0, 0.0, 1.0)
+        colorizeNode.inputs[2].default_value = (0.0, 0.0, 1.0, 1.0)
+           
+        self.outputs['Image'].default_value = imageNode.outputs[0].default_value      
+        self.node_tree.links.new(imageNode.outputs[0], coreBlurNode.inputs[0])
+        self.node_tree.links.new(imageNode.outputs[0], glowBlurNode.inputs[0])
+        self.node_tree.links.new(coreBlurNode.outputs[0], mixNode.inputs[1])
+        self.node_tree.links.new(glowBlurNode.outputs[0], colorizeNode.inputs[0])
+        #NOT WORKING?
+        self.node_tree.links.new(self.inputs['Glow color'], colorizeNode.inputs[2])      
+        self.node_tree.links.new(colorizeNode.outputs[0], mixNode.inputs[2])
+        self.node_tree.links.new(mixNode.outputs[0],self.node_tree.nodes['Group Output'].inputs[0])
         
     def draw_buttons(self, context, layout):
         row=layout.row()
@@ -152,6 +181,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         row.prop(self, 'thickness', text='Thickness', slider=1)
         row=layout.row()
         row.prop(self, 'glow', text='Glow', slider=1)
+        row=layout.row()
+        row.prop(self, 'coreBlur', text='Core blur', slider=1)
         row=layout.row()
         row.prop(self, 'seed', text='Seed')
 
