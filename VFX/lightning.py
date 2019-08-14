@@ -92,7 +92,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         #img.user_clear()
         #bpy.data.images.remove(img)
         #img = bpy.data.images.new(name=self.imageName, width=scene.render.resolution_x, height=scene.render.resolution_y)
-        self.drawBolt(pixels, 500,500,1400,500, img.size[0], img.size[1])
+        self.drawBolt(pixels, self.inputs['Start X'].default_value,self.inputs['Start Y'].default_value,self.inputs['End X'].default_value,self.inputs['End Y'].default_value, img.size[0], img.size[1])
         img.pixels[:] = pixels    
         img.update()  
         coreBlurNode = self.node_tree.nodes.get('coreBlurNode')
@@ -104,24 +104,17 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         #to force backdrop update, dunno how to do it correctly :D              
         self.inputs['Start X'].default_value = self.inputs['Start X'].default_value
         #bpy.context.scene.nodes.node_tree.update()
-
-        #resultNode = self.node_tree.nodes.new("CompositorNodeImage")
-        #resultNode.label = 'resultImageNode'
-        #outNode = bpy.context.scene.node_tree.nodes.new("CompositorNodeImage")
-        #resultNode.image = bpy.data.images[self.imageName]
-        #print(self.node_tree.nodes.keys())
-        #self.outputs['Image'].default_value = resultNode.outputs[0].default_value
         return
     
     forking: bpy.props.FloatProperty(name="Forking", description="The probability of forking", min=0.0, max=1.0, default=0.3, update=update_effect)
     complexity: bpy.props.IntProperty(name="Complexity", description="Number of recursive segments (curves of the bolt)", min=5, max=15, default=5, update=update_effect)
     stability: bpy.props.FloatProperty(name="Stability", description="How much does the bolt wiggle", min=0.0, max=1.0, default=0.5, update=update_effect)
     falloff: bpy.props.FloatProperty(name="Falloff", description="Making the bolt thin at the end", min=0.0, max=1.0, default=0.0, update=update_effect, unit='LENGTH')
-    thickness: bpy.props.IntProperty(name="Thickness", description="Overall thickness of the bolt", min=0, max=100, default=5, update=update_effect)
-    glow: bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=100.0, default=0.0, update=update_effect)
+    thickness: bpy.props.IntProperty(name="Thickness", description="Overall thickness of the bolt", min=0, max=100, default=3, update=update_effect)
+    glow: bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=200.0, default=60.0, update=update_effect)
     coreBlur: bpy.props.FloatProperty(name="Core blur", description="How sharp the core is", min=0.0, max=30.0, default=5.0, update=update_effect,)
     seed: bpy.props.IntProperty(name="Seed", description="Random seed affecting the shape of the bolt", min=0, default=0, update=update_effect)
-    
+
     def init(self, context):
         scene = bpy.context.scene
         bpy.data.images.new(name=self.imageName, width=scene.render.resolution_x, height=scene.render.resolution_y)
@@ -130,10 +123,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         inputs = self.node_tree.nodes.new('NodeGroupInput')
         outputs = self.node_tree.nodes.new('NodeGroupOutput') 
         self.node_tree.inputs.new("NodeSocketColor", "Glow color")
-        self.node_tree.inputs.new("NodeSocketFloat", "Start X")
-        self.node_tree.inputs.new("NodeSocketFloat", "Start Y")
-        self.node_tree.inputs.new("NodeSocketFloat", "End X")
-        self.node_tree.inputs.new("NodeSocketFloat", "End y")
+        self.node_tree.inputs.new("NodeSocketInt", "Start X")
+        self.node_tree.inputs.new("NodeSocketInt", "Start Y")
+        self.node_tree.inputs.new("NodeSocketInt", "End X")
+        self.node_tree.inputs.new("NodeSocketInt", "End Y")
         self.node_tree.outputs.new("NodeSocketColor", "Image")
         
         imageNode = self.node_tree.nodes.new("CompositorNodeImage")
@@ -164,7 +157,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         self.node_tree.links.new(coreBlurNode.outputs[0], mixNode.inputs[1])
         self.node_tree.links.new(glowBlurNode.outputs[0], colorizeNode.inputs[0])
         #NOT WORKING?
-        self.node_tree.links.new(self.inputs['Glow color'], colorizeNode.inputs[2])      
+        self.node_tree.links.new(self.node_tree.nodes['Group Input'].outputs[0], colorizeNode.inputs[2])      
         self.node_tree.links.new(colorizeNode.outputs[0], mixNode.inputs[2])
         self.node_tree.links.new(mixNode.outputs[0],self.node_tree.nodes['Group Output'].inputs[0])
         
