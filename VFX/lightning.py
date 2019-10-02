@@ -114,8 +114,13 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
     glow: bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=200.0, default=60.0, update=update_effect)
     coreBlur: bpy.props.FloatProperty(name="Core blur", description="How sharp the core is", min=0.0, max=30.0, default=5.0, update=update_effect,)
     seed: bpy.props.IntProperty(name="Seed", description="Random seed affecting the shape of the bolt", min=0, default=0, update=update_effect)
-
+    
     def init(self, context):
+        #WORKAROUND since socket update is not working
+        def update(dummy):
+            self.update_effect(bpy.context)
+        bpy.app.handlers.depsgraph_update_pre.append(update)
+        
         scene = bpy.context.scene
         bpy.data.images.new(name=self.imageName, width=scene.render.resolution_x, height=scene.render.resolution_y)
 
@@ -156,7 +161,6 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         self.node_tree.links.new(imageNode.outputs[0], glowBlurNode.inputs[0])
         self.node_tree.links.new(coreBlurNode.outputs[0], mixNode.inputs[1])
         self.node_tree.links.new(glowBlurNode.outputs[0], colorizeNode.inputs[0])
-        #NOT WORKING?
         self.node_tree.links.new(self.node_tree.nodes['Group Input'].outputs[0], colorizeNode.inputs[2])      
         self.node_tree.links.new(colorizeNode.outputs[0], mixNode.inputs[2])
         self.node_tree.links.new(mixNode.outputs[0],self.node_tree.nodes['Group Output'].inputs[0])

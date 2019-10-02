@@ -24,3 +24,4 @@ for scene in bpy.data.scenes:
                 override = {'scene': scene, 'active_object': object, 'point_cache': modifier.particle_system.point_cache}
                 bpy.ops.ptcache.free_bake(override)
                 bpy.ops.ptcache.bake(override, bake=True)
+bpy.ops.wm.save_mainfile()
