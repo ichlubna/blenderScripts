@@ -6,20 +6,20 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
     bl_name='LightningGen'
     bl_label='Lightning'
-    imageName = 'Lightning' 
-
-    def drawBolt (self, bitmap, x0, y0, x1, y1, w, h):
+    
+    def drawBolt (self, bitmap, coord, w, h):
         
         def drawLine(start, end, thickness):
         
             def setPixel(x,y):
-                offset = (x + int(y*w))*4
-                for i in range(4):
-                    try:
-                        bitmap[offset+i] = 1.0
-                    except:
-                        {}
-                    
+                if (0 <= x < w) and (0 <= y < h):
+                    offset = (x + int(y*w))*4
+                    for i in range(4):
+                        try:
+                            bitmap[offset+i] = 1.0
+                        except:
+                            {}
+                        
             def drawPoint(x,y,radius):
                 for X in range(-radius, radius+1):
                     for Y in range(-radius, radius+1):
@@ -54,9 +54,9 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             drawPoint(x, y, thickness)
 
 
-        
-        lines = [((x0,y0), (x1,y1), self.thickness)]
-        length = int(math.sqrt(pow(x1-x0,2)+pow(y1-y0,2)))
+        #TODO add spatially consistent random generator like perlin noise so that moving the bolt doesn't change shape rapidly
+        lines = [((coord[0],coord[1]), (coord[2],coord[3]), self.thickness)]
+        length = int(math.sqrt(pow(coord[2]-coord[0],2)+pow(coord[3]-coord[1],2)))
         random.seed(self.seed)
         randRange = int((1.0-self.stability)*int(length/4))
         for i in range(0,self.complexity):
@@ -84,15 +84,26 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             drawLine(line[0], line[1], line[2])
         
     def update_effect(self, context):
-        #TODO update compositor tree
-        #TODO different names
         scene = bpy.context.scene
-        img = bpy.data.images[self.imageName]
-        pixels =  [0.0,0.0,0.0,1.0]*(img.size[0]*img.size[1])
-        #img.user_clear()
-        #bpy.data.images.remove(img)
-        #img = bpy.data.images.new(name=self.imageName, width=scene.render.resolution_x, height=scene.render.resolution_y)
-        self.drawBolt(pixels, self.inputs['Start X'].default_value,self.inputs['Start Y'].default_value,self.inputs['End X'].default_value,self.inputs['End Y'].default_value, img.size[0], img.size[1])
+        img = bpy.data.images[self.name]
+        pixels = [0.0,0.0,0.0,1.0]*(img.size[0]*img.size[1])
+        
+        boltCoordinates=[0,0,0,0]
+        inputs=['Start X', 'Start Y', 'End X', 'End Y']
+        for i in range(len(inputs)):
+            boltCoordinates[i]=self.inputs[inputs[i]].default_value
+            if len(self.inputs[inputs[i]].links) != 0:
+                inputNode = self.inputs[inputs[i]].links[0].from_node
+                if isinstance(inputNode, bpy.types.CompositorNodeTrackPos):
+                    markerPosition = inputNode.clip.tracking.tracks[inputNode.track_name].markers[0].co
+                    xy = 1
+                    if i%2 == 0:
+                        xy = 0
+                    boltCoordinates[i] = int(markerPosition[xy]*inputNode.clip.size[xy])
+                else:
+                    bpy.context.scene.node_tree.links.remove(self.inputs[inputs[i]].links[0])
+
+        self.drawBolt(pixels, boltCoordinates, img.size[0], img.size[1])
         img.pixels[:] = pixels    
         img.update()  
         coreBlurNode = self.node_tree.nodes.get('coreBlurNode')
@@ -111,8 +122,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
     stability: bpy.props.FloatProperty(name="Stability", description="How much does the bolt wiggle", min=0.0, max=1.0, default=0.5, update=update_effect)
     falloff: bpy.props.FloatProperty(name="Falloff", description="Making the bolt thin at the end", min=0.0, max=1.0, default=0.0, update=update_effect, unit='LENGTH')
     thickness: bpy.props.IntProperty(name="Thickness", description="Overall thickness of the bolt", min=0, max=100, default=3, update=update_effect)
-    glow: bpy.props.FloatProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0.0, max=200.0, default=60.0, update=update_effect)
-    coreBlur: bpy.props.FloatProperty(name="Core blur", description="How sharp the core is", min=0.0, max=30.0, default=5.0, update=update_effect,)
+    glow: bpy.props.IntProperty(name="Glow", description="The amount of glow/light emitted by the core", min=0, max=200, default=60, update=update_effect)
+    coreBlur: bpy.props.IntProperty(name="Core blur", description="How sharp the core is", min=0, max=30, default=5, update=update_effect)
     seed: bpy.props.IntProperty(name="Seed", description="Random seed affecting the shape of the bolt", min=0, default=0, update=update_effect)
     
     def init(self, context):
@@ -122,7 +133,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         bpy.app.handlers.depsgraph_update_pre.append(update)
         
         scene = bpy.context.scene
-        bpy.data.images.new(name=self.imageName, width=scene.render.resolution_x, height=scene.render.resolution_y)
+        bpy.data.images.new(name=self.name, width=scene.render.resolution_x, height=scene.render.resolution_y)
 
         self.node_tree=bpy.data.node_groups.new(self.bl_name, 'CompositorNodeTree')
         inputs = self.node_tree.nodes.new('NodeGroupInput')
@@ -136,7 +147,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         
         imageNode = self.node_tree.nodes.new("CompositorNodeImage")
         imageNode.name = 'resultImageNode'
-        imageNode.image = bpy.data.images[self.imageName]
+        imageNode.image = bpy.data.images[self.name]
         
         coreBlurNode = self.node_tree.nodes.new("CompositorNodeBlur")
         coreBlurNode.name = 'coreBlurNode'
@@ -186,6 +197,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
     def copy(self, node):
         '''
+        TODO copy necessary structures especially allocate new Image for result
         self.node_tree=node.node_tree.copy()
         '''
         return
@@ -193,7 +205,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
     def free(self):
         bpy.data.node_groups.remove(self.node_tree, do_unlink=True)
         #bpy.context.scene.node_tree.nodes.remove(self.group, do_unlink=True)
-        img = bpy.data.images[self.imageName]
+        img = bpy.data.images[self.name]
         img.user_clear()
         bpy.data.images.remove(img)
 
