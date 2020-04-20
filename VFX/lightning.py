@@ -8,7 +8,7 @@ bl_info = {
     "name": "Compositor lightning generator node",
     "description":
         "Adds a new node in compositor that generates an electric lightning effect.",
-    "author": "Tomas Chlubna",
+    "author": "ichlubna",
     "version": (1, 0),
     "blender": (2, 80, 0),
     "location": "Compositing > Add > Generate > Lightning",
@@ -25,11 +25,21 @@ bl_info = {
 class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
     bl_name = 'LightningGen'
-    bl_label = 'Lightning'
+    bl_label = 'Lightning'        
 
     def drawBolt(self, bitmap, coord, w, h):
 
         def drawLine(start, end, thickness):
+            
+            def scaleRadius(radius, point, start, end, scale):
+                if (scale == 1.0):
+                    return radius
+                maxDistMultiplier = 1.0
+                maxDist = math.dist((coord[0], coord[1]), (coord[2], coord[3]))*maxDistMultiplier
+                currentDist = math.dist(point, (coord[0], coord[1]))
+                if(currentDist == 0.0):
+                    return radius
+                return int(round((currentDist/maxDist)*scale*radius+radius))
 
             def setPixel(x, y):
                 if (0 <= x < w) and (0 <= y < h):
@@ -40,11 +50,12 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                         except:
                             {}
 
-            def drawPoint(x, y, radius):
+            def drawPoint(x, y, thickness):
+                radius = scaleRadius(thickness, [x,y], start, end, self.perspectiveScale)
                 for X in range(-radius, radius+1):
                     for Y in range(-radius, radius+1):
                         if(X*X+Y*Y <= radius*radius):
-                            setPixel(X+x, Y+y)
+                            setPixel(X+x, Y+y)                        
 
             # Bressenham
             dx = abs(end[0] - start[0])
@@ -74,6 +85,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             drawPoint(x, y, thickness)
 
         # TODO add spatially consistent random generator so that moving the bolt doesn't change shape rapidly
+        # https://docs.blender.org/api/current/mathutils.noise.html
         lines = [((coord[0], coord[1]), (coord[2], coord[3]), self.thickness)]
         length = int(math.sqrt(pow(coord[2]-coord[0], 2) + pow(coord[3]-coord[1], 2)))
         random.seed(self.seed)
@@ -154,6 +166,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                                      description="Overall thickness of the bolt",
                                      min=0, max=100, default=3,
                                      update=update_effect)
+    perspectiveScale: bpy.props.FloatProperty(name="Perspective scale",
+                                              description="Scales the bolt in the direction of end point",
+                                              min=1.0, max=10.0, default=1.0,
+                                              update=update_effect)
     glow: bpy.props.IntProperty(name="Glow",
                                 description="The amount of glow/light emitted by the core",
                                 min=0, max=200, default=60,
@@ -180,6 +196,11 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         self.node_tree.inputs.new("NodeSocketInt", "End X")
         self.node_tree.inputs.new("NodeSocketInt", "End Y")
         self.node_tree.outputs.new("NodeSocketColor", "Image")
+        
+        self.inputs["Start X"].default_value=scene.render.resolution_x/3
+        self.inputs["Start Y"].default_value=scene.render.resolution_y/2
+        self.inputs["End X"].default_value=scene.render.resolution_x-scene.render.resolution_x/3
+        self.inputs["End Y"].default_value=scene.render.resolution_y/2
 
         imageNode = self.node_tree.nodes.new("CompositorNodeImage")
         imageNode.name = 'resultImageNode'
@@ -229,6 +250,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         row.prop(self, 'falloff', text='Falloff', slider=1)
         row = layout.row()
         row.prop(self, 'thickness', text='Thickness', slider=1)
+        row = layout.row()
+        row.prop(self, 'perspectiveScale', text='Perspective scale', slider=1)
         row = layout.row()
         row.prop(self, 'glow', text='Glow', slider=1)
         row = layout.row()
