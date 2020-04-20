@@ -148,11 +148,11 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
     forking: bpy.props.FloatProperty(name="Forking",
                                      description="The probability of forking",
-                                     min=0.0, max=1.0, default=0.3,
+                                     min=0.0, max=1.0, default=0.5,
                                      update=update_effect)
     complexity: bpy.props.IntProperty(name="Complexity",
                                       description="Number of recursive segments (curves of the bolt)",
-                                      min=5, max=15, default=5,
+                                      min=5, max=15, default=8,
                                       update=update_effect)
     stability: bpy.props.FloatProperty(name="Stability",
                                        description="How much does the bolt wiggle",
@@ -201,6 +201,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         self.inputs["Start Y"].default_value=scene.render.resolution_y/2
         self.inputs["End X"].default_value=scene.render.resolution_x-scene.render.resolution_x/3
         self.inputs["End Y"].default_value=scene.render.resolution_y/2
+        self.inputs["Glow color"].default_value = [0.0, 0.27, 1.0, 1.0]
 
         imageNode = self.node_tree.nodes.new("CompositorNodeImage")
         imageNode.name = 'resultImageNode'
@@ -288,4 +289,5 @@ try:
 except:
     pass
 register()
+
 '''
