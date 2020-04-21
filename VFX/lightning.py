@@ -239,6 +239,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             if self.name != "":
                 self.update_effect(bpy.context)
         bpy.app.handlers.depsgraph_update_pre.append(update)
+        bpy.app.handlers.frame_change_pre.append(update)
 
     def draw_buttons(self, context, layout):
         row = layout.row()
@@ -269,6 +270,9 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         img = bpy.data.images[self.name]
         img.user_clear()
         bpy.data.images.remove(img)
+        #WORKAROUND TO FIX NOT UPDATING OF CUSTOM PROPERTIES
+        bpy.app.handlers.depsgraph_update_pre.clear()
+        bpy.app.handlers.frame_change_pre.clear()
 
 
 def register():
