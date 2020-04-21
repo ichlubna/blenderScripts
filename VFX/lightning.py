@@ -119,7 +119,6 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         scene = bpy.context.scene
         img = bpy.data.images[self.name]
         pixels = [0.0, 0.0, 0.0, 1.0]*(img.size[0]*img.size[1])
-
         boltCoordinates = [0, 0, 0, 0]
         inputs = ['Start X', 'Start Y', 'End X', 'End Y']
         for i in range(len(inputs)):
@@ -127,7 +126,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             if len(self.inputs[inputs[i]].links) != 0:
                 inputNode = self.inputs[inputs[i]].links[0].from_node
                 if isinstance(inputNode, bpy.types.CompositorNodeTrackPos):
-                    markerPosition = inputNode.clip.tracking.tracks[inputNode.track_name].markers[0].co
+                    markerPosition = inputNode.clip.tracking.tracks[inputNode.track_name].markers.find_frame(bpy.context.scene.frame_current).co
                     xy = 1
                     if i % 2 == 0:
                         xy = 0
@@ -238,8 +237,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         def update(dummy):
             if self.name != "":
                 self.update_effect(bpy.context)
+        bpy.app.driver_namespace[self.name] = update
         bpy.app.handlers.depsgraph_update_pre.append(update)
-        bpy.app.handlers.frame_change_pre.append(update)
+        bpy.app.handlers.frame_change_post.append(update)
+        bpy.app.handlers.render_post.append(update)
 
     def draw_buttons(self, context, layout):
         row = layout.row()
@@ -271,8 +272,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         img.user_clear()
         bpy.data.images.remove(img)
         #WORKAROUND TO FIX NOT UPDATING OF CUSTOM PROPERTIES
-        bpy.app.handlers.depsgraph_update_pre.clear()
-        bpy.app.handlers.frame_change_pre.clear()
+        bpy.app.handlers.depsgraph_update_pre.remove(bpy.app.driver_namespace[self.name])
+        bpy.app.handlers.frame_change_post.remove(bpy.app.driver_namespace[self.name])
+        bpy.app.handlers.render_post.remove(bpy.app.driver_namespace[self.name])
+        del bpy.app.driver_namespace[self.name]
 
 
 def register():
