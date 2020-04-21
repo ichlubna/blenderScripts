@@ -116,6 +116,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             drawLine(line[0], line[1], line[2])
 
     def update_effect(self, context):
+        if (bpy.context.scene.use_nodes == True):
+            return
         scene = bpy.context.scene
         img = bpy.data.images[self.name]
         pixels = [0.0, 0.0, 0.0, 1.0]*(img.size[0]*img.size[1])
