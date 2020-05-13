@@ -8,7 +8,7 @@ bl_info = {
     "name": "Compositor lightning generator node",
     "description":
         "Adds a new node in compositor that generates an electric lightning effect.",
-    "author": "Tomas Chlubna",
+    "author": "ichlubna",
     "version": (1, 0),
     "blender": (2, 80, 0),
     "location": "Compositing > Add > Generate > Lightning",
@@ -25,11 +25,21 @@ bl_info = {
 class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
     bl_name = 'LightningGen'
-    bl_label = 'Lightning'
+    bl_label = 'Lightning'        
 
     def drawBolt(self, bitmap, coord, w, h):
 
         def drawLine(start, end, thickness):
+            
+            def scaleRadius(radius, point, start, end, scale):
+                if (scale == 1.0):
+                    return radius
+                maxDistMultiplier = 1.0
+                maxDist = math.dist((coord[0], coord[1]), (coord[2], coord[3]))*maxDistMultiplier
+                currentDist = math.dist(point, (coord[0], coord[1]))
+                if(currentDist == 0.0):
+                    return radius
+                return int(round((currentDist/maxDist)*scale*radius+radius))
 
             def setPixel(x, y):
                 if (0 <= x < w) and (0 <= y < h):
@@ -40,11 +50,12 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                         except:
                             {}
 
-            def drawPoint(x, y, radius):
+            def drawPoint(x, y, thickness):
+                radius = scaleRadius(thickness, [x,y], start, end, self.perspectiveScale)
                 for X in range(-radius, radius+1):
                     for Y in range(-radius, radius+1):
                         if(X*X+Y*Y <= radius*radius):
-                            setPixel(X+x, Y+y)
+                            setPixel(X+x, Y+y)                        
 
             # Bressenham
             dx = abs(end[0] - start[0])
@@ -74,6 +85,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             drawPoint(x, y, thickness)
 
         # TODO add spatially consistent random generator so that moving the bolt doesn't change shape rapidly
+        # https://docs.blender.org/api/current/mathutils.noise.html
         lines = [((coord[0], coord[1]), (coord[2], coord[3]), self.thickness)]
         length = int(math.sqrt(pow(coord[2]-coord[0], 2) + pow(coord[3]-coord[1], 2)))
         random.seed(self.seed)
@@ -104,10 +116,11 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             drawLine(line[0], line[1], line[2])
 
     def update_effect(self, context):
+        if (bpy.context.scene.use_nodes == False):
+            return
         scene = bpy.context.scene
         img = bpy.data.images[self.name]
         pixels = [0.0, 0.0, 0.0, 1.0]*(img.size[0]*img.size[1])
-
         boltCoordinates = [0, 0, 0, 0]
         inputs = ['Start X', 'Start Y', 'End X', 'End Y']
         for i in range(len(inputs)):
@@ -115,7 +128,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             if len(self.inputs[inputs[i]].links) != 0:
                 inputNode = self.inputs[inputs[i]].links[0].from_node
                 if isinstance(inputNode, bpy.types.CompositorNodeTrackPos):
-                    markerPosition = inputNode.clip.tracking.tracks[inputNode.track_name].markers[0].co
+                    markerPosition = inputNode.clip.tracking.tracks[inputNode.track_name].markers.find_frame(bpy.context.scene.frame_current).co
                     xy = 1
                     if i % 2 == 0:
                         xy = 0
@@ -136,11 +149,11 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
     forking: bpy.props.FloatProperty(name="Forking",
                                      description="The probability of forking",
-                                     min=0.0, max=1.0, default=0.3,
+                                     min=0.0, max=1.0, default=0.5,
                                      update=update_effect)
     complexity: bpy.props.IntProperty(name="Complexity",
                                       description="Number of recursive segments (curves of the bolt)",
-                                      min=5, max=15, default=5,
+                                      min=5, max=15, default=8,
                                       update=update_effect)
     stability: bpy.props.FloatProperty(name="Stability",
                                        description="How much does the bolt wiggle",
@@ -154,6 +167,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                                      description="Overall thickness of the bolt",
                                      min=0, max=100, default=3,
                                      update=update_effect)
+    perspectiveScale: bpy.props.FloatProperty(name="Perspective scale",
+                                              description="Scales the bolt in the direction of end point",
+                                              min=1.0, max=10.0, default=1.0,
+                                              update=update_effect)
     glow: bpy.props.IntProperty(name="Glow",
                                 description="The amount of glow/light emitted by the core",
                                 min=0, max=200, default=60,
@@ -180,6 +197,12 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         self.node_tree.inputs.new("NodeSocketInt", "End X")
         self.node_tree.inputs.new("NodeSocketInt", "End Y")
         self.node_tree.outputs.new("NodeSocketColor", "Image")
+        
+        self.inputs["Start X"].default_value=scene.render.resolution_x/3
+        self.inputs["Start Y"].default_value=scene.render.resolution_y/2
+        self.inputs["End X"].default_value=scene.render.resolution_x-scene.render.resolution_x/3
+        self.inputs["End Y"].default_value=scene.render.resolution_y/2
+        self.inputs["Glow color"].default_value = [0.0, 0.27, 1.0, 1.0]
 
         imageNode = self.node_tree.nodes.new("CompositorNodeImage")
         imageNode.name = 'resultImageNode'
@@ -216,7 +239,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         def update(dummy):
             if self.name != "":
                 self.update_effect(bpy.context)
+        bpy.app.driver_namespace[self.name] = update
         bpy.app.handlers.depsgraph_update_pre.append(update)
+        bpy.app.handlers.frame_change_post.append(update)
+        bpy.app.handlers.render_post.append(update)
 
     def draw_buttons(self, context, layout):
         row = layout.row()
@@ -229,6 +255,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         row.prop(self, 'falloff', text='Falloff', slider=1)
         row = layout.row()
         row.prop(self, 'thickness', text='Thickness', slider=1)
+        row = layout.row()
+        row.prop(self, 'perspectiveScale', text='Perspective scale', slider=1)
         row = layout.row()
         row.prop(self, 'glow', text='Glow', slider=1)
         row = layout.row()
@@ -245,6 +273,11 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         img = bpy.data.images[self.name]
         img.user_clear()
         bpy.data.images.remove(img)
+        #WORKAROUND TO FIX NOT UPDATING OF CUSTOM PROPERTIES
+        bpy.app.handlers.depsgraph_update_pre.remove(bpy.app.driver_namespace[self.name])
+        bpy.app.handlers.frame_change_post.remove(bpy.app.driver_namespace[self.name])
+        bpy.app.handlers.render_post.remove(bpy.app.driver_namespace[self.name])
+        del bpy.app.driver_namespace[self.name]
 
 
 def register():
@@ -265,4 +298,5 @@ try:
 except:
     pass
 register()
+
 '''
