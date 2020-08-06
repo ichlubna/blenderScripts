@@ -3,12 +3,12 @@ import os
 import mathutils
 import math
 
-sampleDensity = 8
+sampleDensity = 9
 sampleDistance = 0.05
 renderInfo = bpy.data.scenes["Scene"].render
 
 def imagePath(x,y,prefix=""):
-    return renderInfo.filepath[:]+prefix+str(x)+"_"+str(y)
+    return originalFilePath+prefix+str(x)+"_"+str(y)+renderInfo.file_extension
 
 def clamp(x):
     return max(min(x, 1.0), 0.0)
@@ -23,7 +23,14 @@ def writePixel(x,y,pixels,rx,value):
     pixels[i+1] = value[1]
     pixels[i+2] = value[2]
 
-
+def saveImagePixels(pixels, width, height, path):
+    pixelImage = bpy.data.images.new("pixelImage", width=width, height=height)
+    pixelImage.pixels[:] = pixels
+    pixelImage.update()
+    pixelImage.save_render(path)
+    pixelImage.buffers_free()
+    bpy.data.images.remove(pixelImage)       
+         
 def renderSamples():
     camera = bpy.context.scene.camera
     originalBasis = camera.matrix_basis
@@ -32,7 +39,7 @@ def renderSamples():
     renderInfo.use_overwrite = True
     
     for b in range(renderInfo.resolution_y):
-        pixels = [[[0.0, 0.0, 0.0, 1.0]*(sampleDensity*sampleDensity)]*3]*renderInfo.resolution_x
+        pixels = [[0.0, 0.0, 0.0, 1.0]*(sampleDensity*sampleDensity)]*renderInfo.resolution_x
         renderInfo.use_border = True
         renderInfo.use_crop_to_border = False
         renderPadding = 0.01
@@ -47,33 +54,36 @@ def renderSamples():
                 renderInfo.filepath = originalFilePath+"test.png"
                 bpy.ops.render.render( write_still=True )
                 image = bpy.data.images.load(renderInfo.filepath)
-                
                 for p in range(renderInfo.resolution_x):
                     #TODO YUV?
-                    pixel = getPixel(p, b, image)
-                    for i in range(3):
-                        writePixel(x, y, pixels[p][i], sampleDensity, [pixel[i]*3])
-                    
+                    pixel = getPixel(p,b,image)
+                    writePixel(x, y, pixels[p], sampleDensity, pixel)       
+                image.buffers_free()        
                 bpy.data.images.remove(image)
 
         for p in range(renderInfo.resolution_x):
-            for i in range(3):
-                pixelImage = bpy.data.images.new("pixelImage", width=sampleDensity, height=sampleDensity)
-                pixelImage.pixels[:] = pixels[p][i]
-                pixelImage.update()
-                pixelImage.save_render(imagePath(p,b,"ch"+str(i)))
-                bpy.data.images.remove(pixelImage)       
+                saveImagePixels(pixels[p],sampleDensity,sampleDensity,imagePath(p,b))      
          
     renderInfo.filepath = originalFilePath
     camera.matrix_basis = originalBasis
+    renderInfo.use_border = False
     os.remove(originalFilePath+"test.png")
 
-
+def reconstruct(x,y):
+    pixels = [0.0, 0.0, 0.0, 1.0]*(renderInfo.resolution_x*renderInfo.resolution_y)
+    for px in range(renderInfo.resolution_x):
+            for py in range(renderInfo.resolution_y):
+                image = bpy.data.images.load(imagePath(px,py))
+                writePixel(px,py,pixels,renderInfo.resolution_x,getPixel(x,y,image))
+                image.buffers_free()  
+                bpy.data.images.remove(image)
+    saveImagePixels(pixels,renderInfo.resolution_x,renderInfo.resolution_y,renderInfo.filepath[:]+"reconstructed"+str(x)+"_"+str(y))       
 
 originalFilePath = renderInfo.filepath
 try:
     renderSamples()
-    #reconstruct(0,0)
+    reconstruct(4,4)
 except Exception as e:
     renderInfo.filepath = originalFilePath
     print(e)
+renderInfo.filepath = originalFilePath
