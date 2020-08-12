@@ -2,10 +2,12 @@ import bpy
 import os
 import mathutils
 import math
+from functools import *
 
-sampleDensity = 9
+sampleDensity = 3
 sampleDistance = 0.05
 renderInfo = bpy.data.scenes["Scene"].render
+tempRenderFile = bpy.app.tempdir+"test.png"
 
 def imagePath(x,y,prefix=""):
     return originalFilePath+prefix+str(x)+"_"+str(y)+renderInfo.file_extension
@@ -32,57 +34,57 @@ def saveImagePixels(pixels, width, height, path):
     bpy.data.images.remove(pixelImage)       
          
 def renderSamples():
+    #maybe copy camera and then delete to keep the original one in case of errors
     camera = bpy.context.scene.camera
     originalBasis = camera.matrix_basis
     cornerTranslation = (sampleDensity*sampleDistance)/2
     cornerBasis = originalBasis @ mathutils.Matrix.Translation((-cornerTranslation, -cornerTranslation, 0.0))
     renderInfo.use_overwrite = True
+    renderInfo.use_border = True
+    renderInfo.use_crop_to_border = False
     
-    for b in range(renderInfo.resolution_y):
-        pixels = [[0.0, 0.0, 0.0, 1.0]*(sampleDensity*sampleDensity)]*renderInfo.resolution_x
-        renderInfo.use_border = True
-        renderInfo.use_crop_to_border = False
-        renderPadding = 0.01
+    for ry in range(renderInfo.resolution_y):
+        pixels = [reduce(lambda x,y:x+y,[[0.0,0.0,0.0,1.0] for i in range(sampleDensity*sampleDensity)]) for i in range(renderInfo.resolution_x)]
+        renderPadding = 0.03
         renderInfo.border_max_x = 1.0
-        renderInfo.border_max_y = clamp(b/renderInfo.resolution_y+renderPadding)
+        renderInfo.border_max_y = clamp(ry/renderInfo.resolution_y+renderPadding)
         renderInfo.border_min_x = 0.0
-        renderInfo.border_min_y = clamp(b/renderInfo.resolution_y-renderPadding)
+        renderInfo.border_min_y = clamp(ry/renderInfo.resolution_y-renderPadding)
         
         for x in range(sampleDensity):
             for y in range(sampleDensity):
                 camera.matrix_basis = cornerBasis @ mathutils.Matrix.Translation((x*sampleDistance, y*sampleDistance, 0.0))
-                renderInfo.filepath = originalFilePath+"test.png"
+                renderInfo.filepath = tempRenderFile
                 bpy.ops.render.render( write_still=True )
-                image = bpy.data.images.load(renderInfo.filepath)
-                for p in range(renderInfo.resolution_x):
-                    #TODO YUV?
-                    pixel = getPixel(p,b,image)
-                    writePixel(x, y, pixels[p], sampleDensity, pixel)       
+                image = bpy.data.images.load(tempRenderFile)
+                for rx in range(renderInfo.resolution_x):
+                    pixel = getPixel(rx, ry, image)
+                    writePixel(x, y, pixels[rx], sampleDensity, pixel)       
                 image.buffers_free()        
                 bpy.data.images.remove(image)
 
         for p in range(renderInfo.resolution_x):
-                saveImagePixels(pixels[p],sampleDensity,sampleDensity,imagePath(p,b))      
+                saveImagePixels(pixels[p],sampleDensity,sampleDensity,imagePath(p,ry))      
          
     renderInfo.filepath = originalFilePath
     camera.matrix_basis = originalBasis
     renderInfo.use_border = False
-    os.remove(originalFilePath+"test.png")
+    os.remove(tempRenderFile)
 
 def reconstruct(x,y):
-    pixels = [0.0, 0.0, 0.0, 1.0]*(renderInfo.resolution_x*renderInfo.resolution_y)
+    pixels = reduce(lambda x,y:x+y,[[0.0,0.0,0.0,1.0] for i in range(renderInfo.resolution_x*renderInfo.resolution_y)])
     for px in range(renderInfo.resolution_x):
             for py in range(renderInfo.resolution_y):
                 image = bpy.data.images.load(imagePath(px,py))
                 writePixel(px,py,pixels,renderInfo.resolution_x,getPixel(x,y,image))
                 image.buffers_free()  
                 bpy.data.images.remove(image)
-    saveImagePixels(pixels,renderInfo.resolution_x,renderInfo.resolution_y,renderInfo.filepath[:]+"reconstructed"+str(x)+"_"+str(y))       
-
+    saveImagePixels(pixels,renderInfo.resolution_x,renderInfo.resolution_y, imagePath(x,y,"reconstructed"))
+    
 originalFilePath = renderInfo.filepath
 try:
     renderSamples()
-    reconstruct(4,4)
+    reconstruct(2,2)
 except Exception as e:
     renderInfo.filepath = originalFilePath
     print(e)
