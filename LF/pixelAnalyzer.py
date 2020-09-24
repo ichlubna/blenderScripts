@@ -5,14 +5,14 @@ import mathutils
 import math
 from functools import reduce
 
-sampleDensity = 8
+sampleDensity = 1
 sampleDistance = 0.05
 renderInfo = bpy.data.scenes["Scene"].render
 tempRenderFile = bpy.app.tempdir+"test.png"
 originalFilePath = renderInfo.filepath
 
-def imagePath(x,y,prefix=""):
-    return prefix+str(x)+"_"+str(y)+renderInfo.file_extension
+def imagePath(x,y,path=originalFilePath,prefix=""):
+    return path+prefix+str(x)+"_"+str(y)+renderInfo.file_extension
 
 def clamp(x):
     return max(min(x, 1.0), 0.0)
@@ -75,7 +75,7 @@ def renderSamplesAndSort():
     
 def renderSamplesFull(path):
     camera = bpy.context.scene.camera
-    originalBasis = camera.matrix_basis
+    originalBasis = camera.matrix_basis.copy()
     cornerTranslation = (sampleDensity*sampleDistance)/2
     cornerBasis = originalBasis @ mathutils.Matrix.Translation((-cornerTranslation, -cornerTranslation, 0.0))
     renderInfo.use_overwrite = True
@@ -84,8 +84,9 @@ def renderSamplesFull(path):
     for x in range(sampleDensity):
         for y in range(sampleDensity):
             camera.matrix_basis = cornerBasis @ mathutils.Matrix.Translation((x*sampleDistance, y*sampleDistance, 0.0))
-            renderInfo.filepath = renderInfo.filepath + imagePath(x,y)
+            renderInfo.filepath = path + imagePath(x,y)
             bpy.ops.render.render( write_still=True )
+    camera.matrix_basis = originalBasis
 
 def sortPixels(inputPath, outputPath):    
     for ry in range(renderInfo.resolution_y):
@@ -99,7 +100,7 @@ def sortPixels(inputPath, outputPath):
                 image.buffers_free()        
                 bpy.data.images.remove(image)                
         for p in range(renderInfo.resolution_x):
-                saveImagePixels(pixels[p],sampleDensity,sampleDensity,outputPath+imagePath(p,ry))    
+                saveImagePixels(pixels[p],sampleDensity,sampleDensity,imagePath(p,ry,outputPath))    
 
 def reconstruct(x,y,inputPath):
     pixels = reduce(lambda x,y:x+y,[[0.0,0.0,0.0,1.0] for i in range(renderInfo.resolution_x*renderInfo.resolution_y)])
@@ -109,20 +110,18 @@ def reconstruct(x,y,inputPath):
                 writePixel(px,py,pixels,renderInfo.resolution_x,getPixel(x,y,image))
                 image.buffers_free()  
                 bpy.data.images.remove(image)
-    saveImagePixels(pixels,renderInfo.resolution_x,renderInfo.resolution_y, originalFilePath+imagePath(x,y,"reconstructed"))
+    saveImagePixels(pixels,renderInfo.resolution_x,renderInfo.resolution_y, imagePath(x,y,prefix="reconstructed"))
     
 try:
     #renderSamplesAndSort()
     #renderInfo.filepath
-    renderPath = bpy.app.tempdir + "render/"
-    sortPath = bpy.app.tempdir + "sort/"
-    if not os.path.exists(renderPath):
-        os.mkdir(renderPath)
-    if not os.path.exists(sortPath):
-        os.mkdir(sortPath)
-    #renderSamplesFull(renderPath)
-    sortPixels("/home/ichlubna/Downloads/lego/", sortPath)
-    reconstruct(2,2,sortPath)
+    renderPath = "/home/ichlubna/Downloads/pav/"#bpy.app.tempdir + "render/"
+    #sortPath = bpy.app.tempdir + "sort/"
+    #os.mkdir(renderPath)
+    #os.mkdir(sortPath)
+    renderSamplesFull(renderPath)
+    #sortPixels("/home/ichlubna/Downloads/lego/", sortPath)
+    #reconstruct(2,2,sortPath)
 except Exception as e:
     renderInfo.filepath = originalFilePath
     print(e)
