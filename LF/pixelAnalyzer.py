@@ -1,16 +1,18 @@
 import bpy
 import os
+import shutil
 import mathutils
 import math
-from functools import *
+from functools import reduce
 
-sampleDensity = 3
+sampleDensity = 8
 sampleDistance = 0.05
 renderInfo = bpy.data.scenes["Scene"].render
 tempRenderFile = bpy.app.tempdir+"test.png"
+originalFilePath = renderInfo.filepath
 
 def imagePath(x,y,prefix=""):
-    return originalFilePath+prefix+str(x)+"_"+str(y)+renderInfo.file_extension
+    return prefix+str(x)+"_"+str(y)+renderInfo.file_extension
 
 def clamp(x):
     return max(min(x, 1.0), 0.0)
@@ -33,7 +35,7 @@ def saveImagePixels(pixels, width, height, path):
     pixelImage.buffers_free()
     bpy.data.images.remove(pixelImage)       
          
-def renderSamples():
+def renderSamplesAndSort():
     #maybe copy camera and then delete to keep the original one in case of errors
     camera = bpy.context.scene.camera
     originalBasis = camera.matrix_basis
@@ -70,21 +72,57 @@ def renderSamples():
     camera.matrix_basis = originalBasis
     renderInfo.use_border = False
     os.remove(tempRenderFile)
+    
+def renderSamplesFull(path):
+    camera = bpy.context.scene.camera
+    originalBasis = camera.matrix_basis
+    cornerTranslation = (sampleDensity*sampleDistance)/2
+    cornerBasis = originalBasis @ mathutils.Matrix.Translation((-cornerTranslation, -cornerTranslation, 0.0))
+    renderInfo.use_overwrite = True
+    renderInfo.use_border = False
+        
+    for x in range(sampleDensity):
+        for y in range(sampleDensity):
+            camera.matrix_basis = cornerBasis @ mathutils.Matrix.Translation((x*sampleDistance, y*sampleDistance, 0.0))
+            renderInfo.filepath = renderInfo.filepath + imagePath(x,y)
+            bpy.ops.render.render( write_still=True )
 
-def reconstruct(x,y):
+def sortPixels(inputPath, outputPath):    
+    for ry in range(renderInfo.resolution_y):
+        pixels = [reduce(lambda x,y:x+y,[[0.0,0.0,0.0,1.0] for i in range(sampleDensity*sampleDensity)]) for i in range(renderInfo.resolution_x)]
+        for x in range(sampleDensity):
+            for y in range(sampleDensity):
+                image = bpy.data.images.load(inputPath + imagePath(x,y))
+                for rx in range(renderInfo.resolution_x):
+                    pixel = getPixel(rx, ry, image)
+                    writePixel(x, y, pixels[rx], sampleDensity, pixel)       
+                image.buffers_free()        
+                bpy.data.images.remove(image)                
+        for p in range(renderInfo.resolution_x):
+                saveImagePixels(pixels[p],sampleDensity,sampleDensity,outputPath+imagePath(p,ry))    
+
+def reconstruct(x,y,inputPath):
     pixels = reduce(lambda x,y:x+y,[[0.0,0.0,0.0,1.0] for i in range(renderInfo.resolution_x*renderInfo.resolution_y)])
     for px in range(renderInfo.resolution_x):
             for py in range(renderInfo.resolution_y):
-                image = bpy.data.images.load(imagePath(px,py))
+                image = bpy.data.images.load(imagePath(px,py,inputPath))
                 writePixel(px,py,pixels,renderInfo.resolution_x,getPixel(x,y,image))
                 image.buffers_free()  
                 bpy.data.images.remove(image)
-    saveImagePixels(pixels,renderInfo.resolution_x,renderInfo.resolution_y, imagePath(x,y,"reconstructed"))
+    saveImagePixels(pixels,renderInfo.resolution_x,renderInfo.resolution_y, originalFilePath+imagePath(x,y,"reconstructed"))
     
-originalFilePath = renderInfo.filepath
 try:
-    renderSamples()
-    reconstruct(2,2)
+    #renderSamplesAndSort()
+    #renderInfo.filepath
+    renderPath = bpy.app.tempdir + "render/"
+    sortPath = bpy.app.tempdir + "sort/"
+    if not os.path.exists(renderPath):
+        os.mkdir(renderPath)
+    if not os.path.exists(sortPath):
+        os.mkdir(sortPath)
+    #renderSamplesFull(renderPath)
+    sortPixels("/home/ichlubna/Downloads/lego/", sortPath)
+    reconstruct(2,2,sortPath)
 except Exception as e:
     renderInfo.filepath = originalFilePath
     print(e)
