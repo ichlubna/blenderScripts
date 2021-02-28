@@ -1,8 +1,16 @@
 import bpy
 import random
 import math
+import gpu
+import bgl
+import numpy as np
+from mathutils import Matrix
+from gpu_extras.batch import batch_for_shader
 import nodeitems_utils
 from nodeitems_builtins import CompositorNodeCategory
+
+import time
+
 
 bl_info = {
     "name": "Compositor lightning generator node",
@@ -27,10 +35,72 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
     bl_name = 'LightningGen'
     bl_label = 'Lightning'        
 
-    def drawBolt(self, bitmap, coord, w, h):
+    def generateBolt(self, p0, p1):
+        # TODO add spatially consistent random generator so that moving the bolt doesn't change shape rapidly
+        # https://docs.blender.org/api/current/mathutils.noise.html
+        class Lines:
+            class Segment:
+                p0 = 0
+                p1 = 0
+                level = 0
+                def __init__(self, a, b, l):
+                    self.p0 = a
+                    self.p1 = b
+                    self.level = l
+            segments = []
+            vertices = []
+            def addSegment(self,p0, p1, level):
+                self.segments.append(self.Segment(p0, p1, level))
+            def removeSegment(self, i):
+                del self.segments[i]
+            def getCoords(self,s):
+                return [(self.vertices[s.p0], self.vertices[s.p1])]
+            def addLine(self, a, b, level):
+                    self.addSegment(a, b, level)
+            def addVertex(self, v):
+                self.vertices.append(v)
+                return len(self.vertices)-1
+        
+        lines = Lines()
+        lines.addVertex(p0)
+        lines.addVertex(p1)
+        lines.addSegment(0,1,0)      
+        length = np.linalg.norm(p1-p0)
+        random.seed(self.seed)
+        randRange = int((1.0-self.stability)*int(length/4))
+        for i in range(0, self.complexity):
+            for si in range (0, len(lines.segments)):
+                segment = lines.segments[si]
+                pts = lines.getCoords(segment)[0]
+                vector = pts[1]-pts[0]
+                normal = np.array([vector[1], -vector[0]])
+                normal = normal/np.linalg.norm(normal, ord=1)              
+                randOffset = normal*np.array([random.randint(-randRange, randRange), random.randint(-randRange, randRange)])
+                midpoint = ((pts[0]+pts[1])/2)+randOffset
+                midpointID = lines.addVertex(midpoint)
+                
+                if random.uniform(0.0, 1.0) < self.forking and i < int(self.complexity/3):
+                    direction = midpoint-pts[0]
+                    angle = random.uniform(0.0, 0.9)
+                    if random.uniform(0.0, 1.0) > 0.5:
+                        angle = -angle
+                    cosVal = math.cos(angle)
+                    sinVal = math.sin(angle)
+                    csd = np.array([cosVal, -sinVal])*direction
+                    scd = np.array([sinVal, cosVal])*direction
+                    forkEnd = midpoint+np.array([np.sum(csd), np.sum(scd)])
+                    endID = lines.addVertex(forkEnd)
+                    lines.addLine(midpointID, endID, segment.level+1)
+    
+                lines.addLine(segment.p0, midpointID, segment.level)
+                lines.addLine(midpointID, segment.p1, segment.level)
+                lines.removeSegment(si)
+            randRange = int(randRange/2)
+        return lines
 
+    def drawBolt(self, lines, pixels, coord, w, h):
+        bitmap = [0.0, 0.0, 0.0, 1.0]*(w*h)
         def drawLine(start, end, thickness):
-            
             def scaleRadius(radius, point, start, end, scale):
                 if (scale == 1.0):
                     return radius
@@ -65,7 +135,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             sy = -1 if start[1] > end[1] else 1
             if dx > dy:
                 err = dx / 2.0
-                while x != end[0]:
+                while x != end[0] and (0 <= x < w):
                     drawPoint(x, y, thickness)
                     err -= dy
                     if err < 0:
@@ -74,7 +144,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                     x += sx
             else:
                 err = dy / 2.0
-                while y != end[1]:
+                while y != end[1] and (0 <= y < h):
                     drawPoint(x, y, thickness)
 
                     err -= dx
@@ -83,48 +153,70 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                         err += dy
                     y += sy
             drawPoint(x, y, thickness)
-
-        # TODO add spatially consistent random generator so that moving the bolt doesn't change shape rapidly
-        # https://docs.blender.org/api/current/mathutils.noise.html
-        lines = [((coord[0], coord[1]), (coord[2], coord[3]), self.thickness)]
-        length = int(math.sqrt(pow(coord[2]-coord[0], 2) + pow(coord[3]-coord[1], 2)))
-        random.seed(self.seed)
-        randRange = int((1.0-self.stability)*int(length/4))
-        for i in range(0, self.complexity):
-            tempLines = lines.copy()
-            lines = []
-            for line in tempLines:
-                start = line[0]
-                end = line[1]
-                randOffset = (random.randint(-randRange, randRange), random.randint(-randRange, randRange))
-                midpoint = (int((start[0]+end[0])/2) + randOffset[0], int((start[1]+end[1])/2) + randOffset[1])
-                if random.uniform(0.0, 1.0) < self.forking and i < int(self.complexity/3):
-                    direction = (midpoint[0]-start[0], midpoint[1]-start[1])
-                    angle = random.uniform(0.0, 0.9)
-                    if random.uniform(0.0, 1.0) > 0.5:
-                        angle = -angle
-                    cosVal = math.cos(angle)
-                    sinVal = math.sin(angle)
-                    forkEnd = (int(cosVal*direction[0] - sinVal*direction[1])+midpoint[0],
-                               int(sinVal*direction[0] + cosVal*direction[1])+midpoint[1])
-                    lines.append((midpoint, forkEnd, int(line[2]/2)))
-
-                lines.append((start, midpoint, line[2]))
-                lines.append((midpoint, end, line[2]))
-            randRange = int(randRange/2)
-        for line in lines:
-            drawLine(line[0], line[1], line[2])
+            
+        for segment in lines.segments:
+            pts = lines.getCoords(segment)[0]
+            drawLine((int(pts[0][0]), int(pts[0][1])), (int(pts[1][0]), int(pts[1][1])), 1)
+        pixels[:] = bitmap
+    
+    def drawBoltGPU(self, lines, pixels, coord, w, h):
+        vertexSource= '''
+            in vec2 position;
+            void main() 
+            {
+                gl_Position = vec4(position, 0.0, 1.0);
+            }
+            '''
+        geometrySource= '''
+            layout(lines) in;
+            layout(triangle_strip, max_vertices = 4) out;
+            void main() 
+            {
+                float width = 0.01;
+                vec2 line = gl_in[1].gl_Position.xy - gl_in[0].gl_Position.xy;
+                vec2 normal = normalize(vec2(line.y, -line.x))*width;
+                for(int i=0; i<4; i++)
+                {
+                    gl_Position = gl_in[i/2].gl_Position+(-1*(i%2))*vec4(normal.x, normal.y, 0.0, 0.0);
+                    EmitVertex();
+                }
+                EndPrimitive();
+            }
+            '''
+        fragmentSource = '''
+            out vec4 fragColor;
+            void main()
+            {
+                fragColor = vec4(1.0,1.0,1.0,1.0);
+            }
+            '''
+        positions = [(0.0,  0.0), (0.0, 1.0), (0.5, 0.5)]
+        offscreen = gpu.types.GPUOffScreen(w, h)
+        shaders = gpu.types.GPUShader(vertexSource, fragmentSource, geocode=geometrySource)
+        batch = batch_for_shader(shaders, 'LINE_STRIP', {"position": tuple(positions)})
+        with offscreen.bind():
+            bgl.glClearColor(0.0, 0.0, 0.0, 1.0)
+            bgl.glClear(bgl.GL_COLOR_BUFFER_BIT)
+            with gpu.matrix.push_pop():
+                gpu.matrix.load_matrix(Matrix.Identity(4))
+                gpu.matrix.load_projection_matrix(Matrix.Identity(4))
+                shaders.bind()
+                batch.draw(shaders)
+            buffer = bgl.Buffer(bgl.GL_FLOAT, w * h * 4)
+            bgl.glReadBuffer(bgl.GL_BACK)
+            bgl.glReadPixels(0, 0, w, h, bgl.GL_RGBA, bgl.GL_FLOAT, buffer)
+        offscreen.free()
+        pixels[:] = buffer
 
     def update_effect(self, context):
         if (bpy.context.scene.use_nodes == False):
             return
         scene = bpy.context.scene
         img = bpy.data.images[self.name]
-        pixels = [0.0, 0.0, 0.0, 1.0]*(img.size[0]*img.size[1])
-        boltCoordinates = [0, 0, 0, 0]
+        coords = [0, 0, 0, 0]
         inputs = ['Start X', 'Start Y', 'End X', 'End Y']
         for i in range(len(inputs)):
-            boltCoordinates[i] = self.inputs[inputs[i]].default_value
+            coords[i] = self.inputs[inputs[i]].default_value
             if len(self.inputs[inputs[i]].links) != 0:
                 inputNode = self.inputs[inputs[i]].links[0].from_node
                 if isinstance(inputNode, bpy.types.CompositorNodeTrackPos):
@@ -132,12 +224,15 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                     xy = 1
                     if i % 2 == 0:
                         xy = 0
-                    boltCoordinates[i] = int(markerPosition[xy]*inputNode.clip.size[xy])
+                    coords[i] = int(markerPosition[xy]*inputNode.clip.size[xy])
                 else:
                     bpy.context.scene.node_tree.links.remove(self.inputs[inputs[i]].links[0])
-
-        self.drawBolt(pixels, boltCoordinates, img.size[0], img.size[1])
-        img.pixels[:] = pixels
+        start = time.time()
+        lines = self.generateBolt(np.array([coords[0],coords[1]]), np.array([coords[2],coords[3]]))
+        self.drawBolt(lines, img.pixels, coords, img.size[0], img.size[1])
+        #self.drawBoltGPU(lines, img.pixels, coords, img.size[0], img.size[1])
+        end = time.time()
+        print(end - start)
         img.update()
         coreBlurNode = self.node_tree.nodes.get('coreBlurNode')
         coreBlurNode.size_x = self.coreBlur
@@ -153,7 +248,7 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                                      update=update_effect)
     complexity: bpy.props.IntProperty(name="Complexity",
                                       description="Number of recursive segments (curves of the bolt)",
-                                      min=5, max=15, default=8,
+                                      min=5, max=17, default=8,
                                       update=update_effect)
     stability: bpy.props.FloatProperty(name="Stability",
                                        description="How much does the bolt wiggle",
@@ -292,11 +387,11 @@ def register():
 def unregister():
     nodeitems_utils.unregister_node_categories("GENERATE_NODES")
     bpy.utils.unregister_class(LightningGen)
-'''
+
 try:
     unregister()
 except:
     pass
 register()
 
-'''
+
