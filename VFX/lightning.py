@@ -4,10 +4,12 @@ import math
 import gpu
 import bgl
 import numpy as np
-from mathutils import Matrix
+import mathutils
+import bl_math
 from gpu_extras.batch import batch_for_shader
 import nodeitems_utils
 from nodeitems_builtins import CompositorNodeCategory
+from multiprocessing import Pool
 
 import time
 
@@ -47,51 +49,69 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                     self.p0 = a
                     self.p1 = b
                     self.level = l
+            maxLevel = 0
             segments = []
             vertices = []
-            def addSegment(self,p0, p1, level):
-                self.segments.append(self.Segment(p0, p1, level))
+            initP0 = []
+            initP1 = []
+            initDirection = []
+            initLength = 0
+            def __init__(self, p0, p1):
+                self.initP0 = p0
+                self.initP1 = p1
+                self.initDirection = p1-p0
+                self.initLength = np.linalg.norm(self.initDirection)
+                self.addVertex(p0)
+                self.addVertex(p1)
+                self.addLine(0,1,0)  
             def removeSegment(self, i):
                 del self.segments[i]
             def getCoords(self,s):
                 return [(self.vertices[s.p0], self.vertices[s.p1])]
             def addLine(self, a, b, level):
-                    self.addSegment(a, b, level)
+                    if level > self.maxLevel:
+                        self.maxLevel = level
+                    self.segments.append(self.Segment(a, b, level))
             def addVertex(self, v):
                 self.vertices.append(v)
                 return len(self.vertices)-1
+            def getMaxLevel(self):
+                return self.maxLevel;
+            def getInitPts(self):
+                return (self.initP1, self.initP0)
+            def getInitLength(self):
+                return self.initLength
+            def getInitDirection(self):
+                return self.initDirection
         
-        lines = Lines()
-        lines.addVertex(p0)
-        lines.addVertex(p1)
-        lines.addSegment(0,1,0)      
-        length = np.linalg.norm(p1-p0)
+        lines = Lines(p0,p1)     
+        length = lines.getInitLength()
         random.seed(self.seed)
-        randRange = int((1.0-self.stability)*int(length/4))
+        randRange = int((1.0-self.stability)*int(length))
         for i in range(0, self.complexity):
             for si in range (0, len(lines.segments)):
                 segment = lines.segments[si]
                 pts = lines.getCoords(segment)[0]
                 vector = pts[1]-pts[0]
                 normal = np.array([vector[1], -vector[0]])
-                normal = normal/np.linalg.norm(normal, ord=1)              
-                randOffset = normal*np.array([random.randint(-randRange, randRange), random.randint(-randRange, randRange)])
+                normal = normal/np.linalg.norm(normal, ord=1)   
+                randOffset = normal*random.randint(-randRange, randRange)
                 midpoint = ((pts[0]+pts[1])/2)+randOffset
                 midpointID = lines.addVertex(midpoint)
                 
-                if random.uniform(0.0, 1.0) < self.forking and i < int(self.complexity/3):
-                    direction = midpoint-pts[0]
-                    angle = random.uniform(0.0, 0.9)
+                if random.uniform(0.0, 1.0) < self.forking and i < int(self.complexity/2):
+                    forkDirection = midpoint-pts[0]
+                    angle = random.uniform(0.1, 1.55*self.maxForkAngle)
                     if random.uniform(0.0, 1.0) > 0.5:
                         angle = -angle
                     cosVal = math.cos(angle)
                     sinVal = math.sin(angle)
-                    csd = np.array([cosVal, -sinVal])*direction
-                    scd = np.array([sinVal, cosVal])*direction
-                    forkEnd = midpoint+np.array([np.sum(csd), np.sum(scd)])
-                    endID = lines.addVertex(forkEnd)
-                    lines.addLine(midpointID, endID, segment.level+1)
-    
+                    csd = np.array([cosVal, -sinVal])*forkDirection
+                    scd = np.array([sinVal, cosVal])*forkDirection
+                    forkEnd = midpoint+np.array([np.sum(csd), np.sum(scd)]) 
+                    forkEndID = lines.addVertex(forkEnd)
+                    lines.addLine(midpointID, forkEndID, segment.level+1)
+                
                 lines.addLine(segment.p0, midpointID, segment.level)
                 lines.addLine(midpointID, segment.p1, segment.level)
                 lines.removeSegment(si)
@@ -156,9 +176,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             
         for segment in lines.segments:
             pts = lines.getCoords(segment)[0]
-            drawLine((int(pts[0][0]), int(pts[0][1])), (int(pts[1][0]), int(pts[1][1])), 1)
+            width = int(bl_math.clamp(self.thickness*(1.0-(segment.level/(self.falloff*lines.getMaxLevel()))), 0, self.thickness))
+            drawLine((int(pts[0][0]), int(pts[0][1])), (int(pts[1][0]), int(pts[1][1])), width)
         pixels[:] = bitmap
-    
+                    
     def drawBoltGPU(self, lines, pixels, coord, w, h):
         vertexSource= '''
             in vec2 position;
@@ -198,8 +219,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             bgl.glClearColor(0.0, 0.0, 0.0, 1.0)
             bgl.glClear(bgl.GL_COLOR_BUFFER_BIT)
             with gpu.matrix.push_pop():
-                gpu.matrix.load_matrix(Matrix.Identity(4))
-                gpu.matrix.load_projection_matrix(Matrix.Identity(4))
+                gpu.matrix.load_matrix(mathutils.Matrix.Identity(4))
+                gpu.matrix.load_projection_matrix(mathutils.Matrix.Identity(4))
                 shaders.bind()
                 batch.draw(shaders)
             buffer = bgl.Buffer(bgl.GL_FLOAT, w * h * 4)
@@ -228,6 +249,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                 else:
                     bpy.context.scene.node_tree.links.remove(self.inputs[inputs[i]].links[0])
         start = time.time()
+        #data = p.map(job, [i for i in range(20)])
+        #p = Pool(processes=4)
         lines = self.generateBolt(np.array([coords[0],coords[1]]), np.array([coords[2],coords[3]]))
         self.drawBolt(lines, img.pixels, coords, img.size[0], img.size[1])
         #self.drawBoltGPU(lines, img.pixels, coords, img.size[0], img.size[1])
@@ -246,6 +269,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                                      description="The probability of forking",
                                      min=0.0, max=1.0, default=0.5,
                                      update=update_effect)
+    maxForkAngle: bpy.props.FloatProperty(name="Max fork angle",
+                                     description="Maximal angle of the forks",
+                                     min=0.0, max=1.0, default=0.5,
+                                     update=update_effect)
     complexity: bpy.props.IntProperty(name="Complexity",
                                       description="Number of recursive segments (curves of the bolt)",
                                       min=5, max=17, default=8,
@@ -256,8 +283,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                                        update=update_effect)
     falloff: bpy.props.FloatProperty(name="Falloff",
                                      description="Making the bolt thin at the end",
-                                     min=0.0, max=1.0, default=0.0,
-                                     update=update_effect, unit='LENGTH')
+                                     min=0.5, max=2.0, default=0.5,
+                                     update=update_effect)
     thickness: bpy.props.IntProperty(name="Thickness",
                                      description="Overall thickness of the bolt",
                                      min=0, max=100, default=3,
@@ -342,6 +369,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
     def draw_buttons(self, context, layout):
         row = layout.row()
         row.prop(self, 'forking',  text='Forking', slider=1)
+        row = layout.row()
+        row.prop(self, 'maxForkAngle',  text='Max fork angle', slider=1)
         row = layout.row()
         row.prop(self, 'complexity',  text='Complexity', slider=1)
         row = layout.row()
