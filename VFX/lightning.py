@@ -178,14 +178,14 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             pts = lines.getCoords(segment)[0]
             width = int(bl_math.clamp(self.thickness*(1.0-(segment.level/(self.falloff*lines.getMaxLevel()))), 0, self.thickness))
             drawLine((int(pts[0][0]), int(pts[0][1])), (int(pts[1][0]), int(pts[1][1])), width)
-        pixels[:] = bitmap
+        pixels.foreach_set(bitmap)
                     
     def drawBoltGPU(self, lines, pixels, coord, w, h):
         vertexSource= '''
-            in vec2 position;
+            in vec3 position;
             void main() 
             {
-                gl_Position = vec4(position, 0.0, 1.0);
+                gl_Position = vec4(position, 1.0);
             }
             '''
         geometrySource= '''
@@ -193,12 +193,13 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             layout(triangle_strip, max_vertices = 4) out;
             void main() 
             {
-                float width = 0.01;
+                float width = gl_in[1].gl_Position.z;
                 vec2 line = gl_in[1].gl_Position.xy - gl_in[0].gl_Position.xy;
-                vec2 normal = normalize(vec2(line.y, -line.x))*width;
+                vec2 normal = normalize(vec2(line.y, -line.x))*(width/2.0);
                 for(int i=0; i<4; i++)
                 {
-                    gl_Position = gl_in[i/2].gl_Position+(-1*(i%2))*vec4(normal.x, normal.y, 0.0, 0.0);
+                    vec2 coords = gl_in[i/2].gl_Position.xy+(1-2*(i%2))*normal;
+                    gl_Position = vec4(coords, 0.0, 1.0);
                     EmitVertex();
                 }
                 EndPrimitive();
@@ -211,10 +212,17 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                 fragColor = vec4(1.0,1.0,1.0,1.0);
             }
             '''
-        positions = [(0.0,  0.0), (0.0, 1.0), (0.5, 0.5)]
+        positions = []
+        for segment in lines.segments:
+            pts = lines.getCoords(segment)[0]
+            ptA = np.divide(pts[0], np.array([w,h]))*2-1.0
+            ptB = np.divide(pts[1], np.array([w,h]))*2-1.0
+            width = bl_math.clamp(self.thickness*(1.0-(segment.level/(self.falloff*lines.getMaxLevel()))), 0, self.thickness)/w
+            positions.append((ptA[0], ptA[1], width))
+            positions.append((ptB[0], ptB[1], width))
         offscreen = gpu.types.GPUOffScreen(w, h)
         shaders = gpu.types.GPUShader(vertexSource, fragmentSource, geocode=geometrySource)
-        batch = batch_for_shader(shaders, 'LINE_STRIP', {"position": tuple(positions)})
+        batch = batch_for_shader(shaders, 'LINES', {"position": tuple(positions)})
         with offscreen.bind():
             bgl.glClearColor(0.0, 0.0, 0.0, 1.0)
             bgl.glClear(bgl.GL_COLOR_BUFFER_BIT)
@@ -226,8 +234,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             buffer = bgl.Buffer(bgl.GL_FLOAT, w * h * 4)
             bgl.glReadBuffer(bgl.GL_BACK)
             bgl.glReadPixels(0, 0, w, h, bgl.GL_RGBA, bgl.GL_FLOAT, buffer)
+        pixels.foreach_set(buffer)
         offscreen.free()
-        pixels[:] = buffer
 
     def update_effect(self, context):
         if (bpy.context.scene.use_nodes == False):
@@ -249,11 +257,12 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                 else:
                     bpy.context.scene.node_tree.links.remove(self.inputs[inputs[i]].links[0])
         start = time.time()
-        #data = p.map(job, [i for i in range(20)])
-        #p = Pool(processes=4)
         lines = self.generateBolt(np.array([coords[0],coords[1]]), np.array([coords[2],coords[3]]))
-        self.drawBolt(lines, img.pixels, coords, img.size[0], img.size[1])
-        #self.drawBoltGPU(lines, img.pixels, coords, img.size[0], img.size[1])
+        if(self.gpuComp):
+            self.drawBoltGPU(lines, img.pixels, coords, img.size[0], img.size[1])
+        else:
+            self.drawBolt(lines, img.pixels, coords, img.size[0], img.size[1])
+
         end = time.time()
         print(end - start)
         img.update()
@@ -304,6 +313,10 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
     seed: bpy.props.IntProperty(name="Seed",
                                 description="Random seed affecting the shape of the bolt",
                                 min=0, default=0,
+                                update=update_effect)
+    gpuComp: bpy.props.BoolProperty(name="GPU compute",
+                                description="Use GPU acceleration (good for very thick and complex bolts)",
+                                default=0,
                                 update=update_effect)
 
     def init(self, context):
@@ -387,6 +400,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         row.prop(self, 'coreBlur', text='Core blur', slider=1)
         row = layout.row()
         row.prop(self, 'seed', text='Seed')
+        row = layout.row()
+        row.prop(self, 'gpuComp', text='GPU compute')
 
     def copy(self, node):
         self.init(bpy.context)
@@ -422,5 +437,3 @@ try:
 except:
     pass
 register()
-
-
