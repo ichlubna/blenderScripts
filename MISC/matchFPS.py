@@ -4,7 +4,7 @@ bl_info = {
     "version": (1, 0),
     "blender": (3, 0, 0),
     "location": "VSE > Strip > Match FPS",
-    "description": "Matches the strip length and speed to render FPS settings",
+    "description": "Matches the strip length and speed to render FPS settings. When having selected the strip, go to the Strip menu and hit Match FPS button.",
     "warning": "",
     "doc_url": "",
     "category": "Strip",
