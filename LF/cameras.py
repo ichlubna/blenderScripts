@@ -34,27 +34,38 @@ class LFArray(bpy.types.Operator):
         mesh = bpy.data.meshes.new('Basic_Cube')
         lookAtCenter = False
   
-        if context.scene.lfType == "plane":   
-            ratio = 1.0
-            if context.scene.lfAspect == "16:9":
-                ratio = 16.0/9
-            elif context.scene.lfAspect == "4:3":
-                ratio = 4.0/3.0
-            mat = mathutils.Matrix.Scale(ratio, 4, (1.0, 0.0, 0.0)) @ mathutils.Matrix.Rotation(math.radians(180), 4, 'X') #rotation to place the first cam to top left corner
-            bmesh.ops.create_grid(bm, x_segments= context.scene.lfDensity, y_segments=context.scene.lfDensity, size=context.scene.lfSize, matrix=mat),
-        elif context.scene.lfType == "sphere":
-            bmesh.ops.create_icosphere(bm, subdivisions=context.scene.lfDensity, radius=context.scene.lfSize)
-            lookAtCenter = True
+        if context.scene.lfType == "row":
+            position = [0,0,0]
+            baseline = context.scene.lfSize/context.scene.lfDensity
+            for i in range(context.scene.lfDensity):
+                position = [0,0,0]
+                position[1] = (context.scene.lfDensity/2.0 - i)*baseline
+                bpy.ops.object.camera_add(location=position, rotation=(1.57,0,1.57))  
+                camera = context.object
+                camera.name = "LF_Cam_"+str(i)
         
-        bm.to_mesh(mesh)
-        for v in mesh.vertices:
-            direction = -v.co
-            rotation = (0,0,0)
-            if lookAtCenter:
-                rotation = direction.to_track_quat('-Z', 'Y').to_euler()
-            bpy.ops.object.camera_add(location=v.co, rotation=rotation)  
-            camera = context.object
-            camera.name = "LF_Cam_"+str(v.index)
+        else:
+            if context.scene.lfType == "plane":   
+                ratio = 1.0
+                if context.scene.lfAspect == "16:9":
+                    ratio = 16.0/9
+                elif context.scene.lfAspect == "4:3":
+                    ratio = 4.0/3.0
+                mat = mathutils.Matrix.Scale(ratio, 4, (1.0, 0.0, 0.0)) @ mathutils.Matrix.Rotation(math.radians(180), 4, 'X') #rotation to place the first cam to top left corner
+                bmesh.ops.create_grid(bm, x_segments= context.scene.lfDensity, y_segments=context.scene.lfDensity, size=context.scene.lfSize, matrix=mat),
+            elif context.scene.lfType == "sphere":
+                bmesh.ops.create_icosphere(bm, subdivisions=context.scene.lfDensity, radius=context.scene.lfSize)
+                lookAtCenter = True
+            
+            bm.to_mesh(mesh)
+            for v in mesh.vertices:
+                direction = -v.co
+                rotation = (0,0,0)
+                if lookAtCenter:
+                    rotation = direction.to_track_quat('-Z', 'Y').to_euler()
+                bpy.ops.object.camera_add(location=v.co, rotation=rotation)  
+                camera = context.object
+                camera.name = "LF_Cam_"+str(v.index)       
             
         objects = bpy.context.scene.objects
         for obj in objects:
@@ -106,7 +117,7 @@ def register():
     bpy.utils.register_class(LFArray)
     bpy.utils.register_class(LFRender)
     bpy.utils.register_class(LFPanel)
-    bpy.types.Scene.lfType = bpy.props.EnumProperty(name="Type", description="Shape of the LF camera array", items=[("plane","Plane","Planar grid"), ("sphere","Sphere","Spherical grid (icosphere)")])
+    bpy.types.Scene.lfType = bpy.props.EnumProperty(name="Type", description="Shape of the LF camera array", items=[("row","Row","Horizontal line"), ("plane","Plane","Planar grid"), ("sphere","Sphere","Spherical grid (icosphere)")])
     bpy.types.Scene.lfAspect = bpy.props.EnumProperty(name="Aspect", description="Aspect ratio for the camera grid", items=[("16:9", "16:9", ""), ("4:3", "4:3", ""), ("1:1", "1:1", "")])
     bpy.types.Scene.lfSize = bpy.props.FloatProperty(name="Size", description="Scale of the array", default=1.0)
     bpy.types.Scene.lfDensity = bpy.props.IntProperty(name="Density", description="Density of the array", default=8)
