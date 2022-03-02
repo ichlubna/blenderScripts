@@ -43,7 +43,7 @@ class LFArray(bpy.types.Operator):
             mat = mathutils.Matrix.Scale(ratio, 4, (1.0, 0.0, 0.0)) @ mathutils.Matrix.Rotation(math.radians(180), 4, 'X') #rotation to place the first cam to top left corner
             bmesh.ops.create_grid(bm, x_segments= context.scene.lfDensity, y_segments=context.scene.lfDensity, size=context.scene.lfSize, matrix=mat),
         elif context.scene.lfType == "sphere":
-            bmesh.ops.create_icosphere(bm, subdivisions=context.scene.lfDensity, diameter=context.scene.lfSize)
+            bmesh.ops.create_icosphere(bm, subdivisions=context.scene.lfDensity, radius=context.scene.lfSize)
             lookAtCenter = True
         
         bm.to_mesh(mesh)
