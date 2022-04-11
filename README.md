@@ -10,3 +10,4 @@ cameras.py - generates grid of cameras for lightfield or LKG
 bakeAll.py - bakes all simulations (usage: blender untitled.blend -b -P bakeAll.py)\
 matchFPS.py - transforms the imported strip in VSE into the project FPS\
 scaleOptical.py - scales the selected objects according to camera
+ffExport.py - connects Blender to external ffmpeg, allowing a direct encoding to all supported formats
