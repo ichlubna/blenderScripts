@@ -4,6 +4,7 @@ import shlex
 import shutil
 import subprocess
 
+
 bl_info = {
     "name": "External FFmpeg interop",
     "description":
@@ -46,6 +47,9 @@ class FFRender(bpy.types.Operator):
     bl_idname = "ffexport.render"
     bl_label = "Render animation"
 
+    def getFPSStr(self):
+        return str(round(bpy.context.scene.render.fps / bpy.context.scene.render.fps_base,2))
+
     def encodeRender(self, context, renderInfo, tempDir, pipe):
         renderInfo.filepath = tempDir+"/frame.png"
         renderInfo.image_settings.file_format = 'PNG'
@@ -60,10 +64,11 @@ class FFRender(bpy.types.Operator):
                 pipe.stdin.write(data)
     
     def bulkEncodeFrames(self, context):
+        print(self.getFPSStr())
         renderInfo = bpy.context.scene.render
         cmd = ['ffmpeg', '-y', '-r', str(renderInfo.fps), '-start_number',
             str(bpy.context.scene.frame_start),
-            '-i', context.scene.ffImagesPath+'/%05d.png', '-r', str(renderInfo.fps)] + \
+            '-i', context.scene.ffImagesPath+'/%05d.png', '-r', self.getFPSStr()] + \
             shlex.split(context.scene.ffParams) + [context.scene.ffOutput]     
         pipe = subprocess.Popen(cmd)
         pipe.wait()
@@ -72,7 +77,7 @@ class FFRender(bpy.types.Operator):
         renderInfo = bpy.context.scene.render
         tempDir = tempfile.mkdtemp()
         
-        cmd = ['ffmpeg', '-y', '-f', 'image2pipe', '-c:v', 'png', '-r', str(renderInfo.fps), '-i', '-'] + \
+        cmd = ['ffmpeg', '-y', '-f', 'image2pipe', '-c:v', 'png', '-r', self.getFPSStr(), '-i', '-'] + \
         shlex.split(context.scene.ffParams) + [context.scene.ffOutput]     
         pipe = subprocess.Popen(cmd, stdin=subprocess.PIPE)
         
