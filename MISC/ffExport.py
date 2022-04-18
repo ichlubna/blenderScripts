@@ -4,6 +4,23 @@ import shlex
 import shutil
 import subprocess
 
+bl_info = {
+    "name": "External FFmpeg interop",
+    "description":
+        "Allows to export the animation with external FFmpeg and all available formats.",
+    "author": "ichlubna",
+    "version": (1, 0),
+    "blender": (3, 1, 0),
+    "location": "3D View side panel",
+    "warning": "",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
+                "Scripts/My_Script",
+    "tracker_url":
+        "https://github.com/ichlubna/blenderScripts",
+    "support": "COMMUNITY",
+    "category": "Import-Export"
+}
+
 class FFPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -97,11 +114,11 @@ def register():
     bpy.utils.register_class(FFPanel)
     bpy.utils.register_class(FFRender)
     bpy.types.Scene.ffPath = bpy.props.StringProperty(name="FFmpeg path", description="The path to the ffmpeg binary", default="ffmpeg")
-    bpy.types.Scene.ffOutput = bpy.props.StringProperty(name="Output file", description="The output file with extension", default="myFile.mkv")
+    bpy.types.Scene.ffOutput = bpy.props.StringProperty(name="Output file", subtype="FILE_PATH", description="The output file with extension", default="myFile.mkv")
     bpy.types.Scene.ffParams = bpy.props.StringProperty(name="FFmpeg params", description="The ffmpeg parameters", default="-c:v libx265 -crf 28")
     bpy.types.Scene.ffImages = bpy.props.BoolProperty(name="Store frames", description="Will store the frames as well", default=False)
     bpy.types.Scene.ffImagesRender = bpy.props.BoolProperty(name="Render frames", description="Will encode the stored frames without rendering", default=False)
-    bpy.types.Scene.ffImagesPath = bpy.props.StringProperty(name="Images path", description="Path for the frames to store", default="./myFrames")
+    bpy.types.Scene.ffImagesPath = bpy.props.StringProperty(name="Images path", subtype="DIR_PATH", description="Path for the frames to store", default="./myFrames")
     bpy.types.Scene.ffExamples = bpy.props.EnumProperty(name="Examples", description="Sets the params to the selected example", items=[("none","none", ""), ("h.265","h.265", ""), ("hevc_nvenc","hevc_nvenc", ""), ("AV1","AV1", ""), ("gif", "gif", "")], update=updateExample)
     
 def unregister():
