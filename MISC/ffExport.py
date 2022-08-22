@@ -118,7 +118,7 @@ def updateExample(self, context):
 def register():
     bpy.utils.register_class(FFPanel)
     bpy.utils.register_class(FFRender)
-    bpy.types.Scene.ffPath = bpy.props.StringProperty(name="FFmpeg path", description="The path to the ffmpeg binary", default="ffmpeg")
+    bpy.types.Scene.ffPath = bpy.props.StringProperty(name="FFmpeg path", subtype="FILE_PATH", description="The path to the ffmpeg binary", default="ffmpeg")
     bpy.types.Scene.ffOutput = bpy.props.StringProperty(name="Output file", subtype="FILE_PATH", description="The output file with extension", default="myFile.mkv")
     bpy.types.Scene.ffParams = bpy.props.StringProperty(name="FFmpeg params", description="The ffmpeg parameters", default="-c:v libx265 -crf 28")
     bpy.types.Scene.ffImages = bpy.props.BoolProperty(name="Store frames", description="Will store the frames as well", default=False)
