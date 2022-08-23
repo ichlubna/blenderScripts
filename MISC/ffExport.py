@@ -66,7 +66,7 @@ class FFRender(bpy.types.Operator):
     def bulkEncodeFrames(self, context):
         print(self.getFPSStr())
         renderInfo = bpy.context.scene.render
-        cmd = [context.scene.ffPath, '-y', '-r', str(renderInfo.fps), '-start_number',
+        cmd = [context.scene.ffPath.encode('unicode_escape'), '-y', '-r', str(renderInfo.fps), '-start_number',
             str(bpy.context.scene.frame_start),
             '-i', context.scene.ffImagesPath+'/%05d.png', '-r', self.getFPSStr()] + \
             shlex.split(context.scene.ffParams) + [context.scene.ffOutput]     
@@ -77,7 +77,7 @@ class FFRender(bpy.types.Operator):
         renderInfo = bpy.context.scene.render
         tempDir = tempfile.mkdtemp()
         
-        cmd = [context.scene.ffPath, '-y', '-f', 'image2pipe', '-c:v', 'png', '-r', self.getFPSStr(), '-i', '-'] + \
+        cmd = [context.scene.ffPath.encode('unicode_escape'), '-y', '-f', 'image2pipe', '-c:v', 'png', '-r', self.getFPSStr(), '-i', '-'] + \
         shlex.split(context.scene.ffParams) + [context.scene.ffOutput]     
         pipe = subprocess.Popen(cmd, stdin=subprocess.PIPE)
         
