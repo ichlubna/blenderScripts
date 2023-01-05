@@ -5,8 +5,8 @@ import mathutils
 import math
 from functools import reduce
 
-sampleDensity = 1
-sampleDistance = 0.05
+sampleDensity = 3
+sampleDistance = 0.1
 renderInfo = bpy.data.scenes["Scene"].render
 tempRenderFile = bpy.app.tempdir+"test.png"
 originalFilePath = renderInfo.filepath
@@ -84,7 +84,7 @@ def renderSamplesFull(path):
     for x in range(sampleDensity):
         for y in range(sampleDensity):
             camera.matrix_basis = cornerBasis @ mathutils.Matrix.Translation((x*sampleDistance, y*sampleDistance, 0.0))
-            renderInfo.filepath = path + imagePath(x,y)
+            renderInfo.filepath = imagePath(x,y,path)
             bpy.ops.render.render( write_still=True )
     camera.matrix_basis = originalBasis
 

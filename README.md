@@ -5,6 +5,8 @@ lightning.py - compositor node for 2D lightning effect
 
 ## LF
 cameras.py - generates grid of cameras for lightfield or LKG
+pixelAnalyzer.py - analyzes pixels from LF data
+lfAssets.py - generates a virtual LF window from input grid - LF images - can be obtained from 3D scene with [this script](https://github.com/ichlubna/lfStreaming/blob/main/scripts/BlenderAddon.py)
 
 ## MISC
 bakeAll.py - bakes all simulations (usage: blender untitled.blend -b -P bakeAll.py)\
