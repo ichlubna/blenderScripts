@@ -14,6 +14,7 @@ import bpy
 import os
 import mathutils
 import math
+import numpy as np
 from pathlib import Path
 
 class LFReader:
@@ -37,9 +38,17 @@ class LFReader:
     def getColsRows(self):
         return [self.cols, self.rows]
 
-    def getImagePath(self, row, column):
-        filePath = os.path.join(self.path, self.files[row][column]
+    def getImagePath(self, row, col):
+        filePath = os.path.join(self.path, self.files[row][col])
         return filePath
+
+    def getImage(self, col, row):
+        image = bpy.data.images.load(self.getImagePath(row,col), check_existing=True)
+        return image
+    
+    def getResolution(self):
+        image = bpy.data.images.load(self.getImagePath(0,0), check_existing=True)
+        return image.size
 
 class LFPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
@@ -66,9 +75,32 @@ class LFGenerator(bpy.types.Operator):
             if area.type == 'VIEW_3D':
                 area.spaces[0].region_3d.view_perspective = 'CAMERA'
     
+    def createTexture(self, context):
+        lf = LFReader()
+        lf.loadDir(context.scene.LFInput)
+        colsRows = lf.getColsRows()
+        resolution = lf.getResolution()
+        CHANNELS = 4
+        imgSize = resolution[0]*resolution[1]*CHANNELS
+        gridRes = [resolution[0], resolution[1]]
+        gridRes[0] *= colsRows[0]
+        gridRes[1] *= colsRows[1]
+        lfGrid = bpy.data.images.new("LFGrid", width=gridRes[0], height=gridRes[1])
+        lfGridPx = np.array([], dtype=np.float32).reshape(resolution[0]*colsRows[1], 0)
+
+        for col in range(colsRows[0]):
+            pixelsCol = np.array([], dtype=np.float32).reshape(0, resolution[1]*CHANNELS)
+            for row in range(colsRows[1]):                
+                image = lf.getImage(col, row)
+                pixels = np.asarray(image.pixels[:])
+                pixels = np.reshape(pixels, (-1, resolution[1]*CHANNELS))
+                pixelsCol = np.vstack([pixelsCol, pixels])
+            lfGridPx = np.hstack([lfGridPx, pixelsCol])
+        print(lfGridPx[0][10])
+        lfGrid.pixels = lfGridPx.ravel()  
+    
     def createMaterial(self, context):
-        LFReader lf
-        #lf.loadDir(context.scene.LFInput)
+        self.createTexture(context)
     
     def createPlane(self, context):
         camera = context.scene.camera
@@ -85,6 +117,7 @@ class LFGenerator(bpy.types.Operator):
     def invoke(self, context, event):
         self.cameraView(context)
         self.createPlane(context)
+        self.createMaterial(context)
         return {"FINISHED"}
 
 def register():
