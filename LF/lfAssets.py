@@ -81,23 +81,21 @@ class LFGenerator(bpy.types.Operator):
         colsRows = lf.getColsRows()
         resolution = lf.getResolution()
         CHANNELS = 4
-        imgSize = resolution[0]*resolution[1]*CHANNELS
         gridRes = [resolution[0], resolution[1]]
         gridRes[0] *= colsRows[0]
         gridRes[1] *= colsRows[1]
         lfGrid = bpy.data.images.new("LFGrid", width=gridRes[0], height=gridRes[1])
-        lfGridPx = np.array([], dtype=np.float32).reshape(resolution[0]*colsRows[1], 0)
+        lfGridPx = np.array([], dtype=float).reshape(resolution[1]*colsRows[1], 0)
 
         for col in range(colsRows[0]):
-            pixelsCol = np.array([], dtype=np.float32).reshape(0, resolution[1]*CHANNELS)
+            pixelsCol = np.array([], dtype=float).reshape(0, resolution[0]*CHANNELS)
             for row in range(colsRows[1]):                
                 image = lf.getImage(col, row)
-                pixels = np.asarray(image.pixels[:])
-                pixels = np.reshape(pixels, (-1, resolution[1]*CHANNELS))
+                pixels = np.asarray(image.pixels)
+                pixels = np.reshape(pixels, (-1, resolution[0]*CHANNELS))
                 pixelsCol = np.vstack([pixelsCol, pixels])
             lfGridPx = np.hstack([lfGridPx, pixelsCol])
-        print(lfGridPx[0][10])
-        lfGrid.pixels = lfGridPx.ravel()  
+        lfGrid.pixels = lfGridPx.flatten()  
     
     def createMaterial(self, context):
         self.createTexture(context)
@@ -112,7 +110,6 @@ class LFGenerator(bpy.types.Operator):
         aspectRatio = renderInfo.resolution_y / renderInfo.resolution_x
         bpy.ops.mesh.primitive_plane_add(size=(xSize), location=position, rotation=camera.rotation_euler)
         context.object.dimensions[1] = xSize*aspectRatio
-        self.createMaterial(context)
 
     def invoke(self, context, event):
         self.cameraView(context)
