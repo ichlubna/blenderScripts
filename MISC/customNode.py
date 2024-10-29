@@ -1,5 +1,8 @@
 import bpy
+from bl_ui import node_add_menu
 import tempfile
+import string
+import random
 import os
 
 class RenderImage(bpy.types.Operator):
@@ -7,7 +10,8 @@ class RenderImage(bpy.types.Operator):
     """
     bl_idname = "mesh.render"
     bl_label = "Render Image"
-    percentage = bpy.props.IntProperty(default=100)
+    percentage : bpy.props.IntProperty(default=100)
+    fileName : bpy.props.StringProperty(default="")
 
     def invoke(self, context, event):
         renderInfo = context.scene.render
@@ -16,13 +20,13 @@ class RenderImage(bpy.types.Operator):
         backupPercent = renderInfo.resolution_percentage  
             
         with tempfile.TemporaryDirectory() as temp:
-            file = os.path.join(temp, "TestImage.png")
+            file = os.path.join(temp, self.fileName)
             renderInfo.image_settings.file_format = "PNG"
-            renderInfo.resolution_percentage = context.scene.resolutionPercent
+            renderInfo.resolution_percentage = self.percentage
             renderInfo.filepath = file
             bpy.ops.render.render(write_still=True)
             
-            image = bpy.data.images.get("TestImage", None)
+            image = bpy.data.images.get(self.fileName, None)
             image.source = 'FILE'
             image.filepath = file
             image.reload()
@@ -47,10 +51,13 @@ class TestNode (bpy.types.ShaderNodeCustomGroup):
         mixNode.update()
         return
     
-    percentage: bpy.props.IntProperty(name="Image size",
+    percentage : bpy.props.IntProperty(name="Image size",
                                      description="Percentage of the render size",
                                      min=1, default=100,
                                      update=update_effect)
+    fileName : bpy.props.StringProperty(name="Name of the image",
+                                     description="This image is used to store the render",
+                                     default="")
                                      
     def init(self, context):
         self.node_tree = bpy.data.node_groups.new(self.bl_name, 'ShaderNodeTree')
@@ -61,11 +68,12 @@ class TestNode (bpy.types.ShaderNodeCustomGroup):
         outNode = self.node_tree.nodes.new(type='NodeGroupOutput')
 
         imageNode = self.node_tree.nodes.new("ShaderNodeTexImage")
+        self.fileName = str((''.join(random.choices(string.ascii_letters, k=5))) + ".png")
         imageNode.name = 'resultImageNode'
         for image in bpy.data.images:
-            if image.name == "TestImage":
+            if image.name == self.fileName:
                 bpy.data.images.remove(image)
-        textureImage = bpy.data.images.new("TestImage", 0, 0)
+        textureImage = bpy.data.images.new(self.fileName, 0, 0)
         imageNode.image = textureImage
 
         mixNode = self.node_tree.nodes.new("ShaderNodeMixRGB")
@@ -83,6 +91,7 @@ class TestNode (bpy.types.ShaderNodeCustomGroup):
         col.prop(self, "percentage")
         op = col.operator("mesh.render", text="Render")
         op.percentage = self.percentage
+        op.fileName = self.fileName
 
     def copy(self, node):
         self.init(bpy.context)
@@ -92,12 +101,40 @@ class TestNode (bpy.types.ShaderNodeCustomGroup):
         bpy.data.node_groups.remove(self.node_tree, do_unlink=True)
         return
 
+class NODE_MT_category_shader_test(bpy.types.Menu):
+    bl_idname = "NODE_MT_category_shader_test"
+    bl_label = "Test"
+
+    def draw(self, context):
+        layout = self.layout
+        node_add_menu.add_node_type(layout, "TestNode")
+        node_add_menu.draw_assets_for_catalog(layout, self.bl_label)
+
+def testNodeDrawInNew(self, context):
+    layout = self.layout
+    layout.menu("NODE_MT_category_shader_test")
+
+def extendDraw(fn):
+     def newDraw(self, context):
+         fn(self, context)
+         node_add_menu.add_node_type(self.layout, "TestNode")
+     return newDraw
+
+def extendExistingCategory():
+    category = bpy.types.NODE_MT_category_shader_output
+    category.draw = extendDraw(category.draw)
+
 def register():
+    bpy.utils.register_class(NODE_MT_category_shader_test)
+    bpy.types.NODE_MT_shader_node_add_all.append(testNodeDrawInNew)
+    #extendExistingCategory()
     bpy.utils.register_class(RenderImage)
     bpy.utils.register_class(TestNode)
 
 
 def unregister():
+    bpy.types.NODE_MT_shader_node_add_all.remove(testNodeDrawInNew)
+    bpy.utils.unregister_class(NODE_MT_category_shader_test)
     bpy.utils.unregister_class(TestNode)
     bpy.utils.unregister_class(RenderImage)
 
@@ -106,11 +143,3 @@ try:
 except:
     pass
 register()
-
-bpy.ops.mesh.primitive_cube_add()
-cube = bpy.context.selected_objects[0]
-mat = bpy.data.materials.new(name="Material")
-cube.data.materials.append(mat)
-mat.use_nodes = True
-nodes = mat.node_tree.nodes
-node = nodes.new('TestNode')
