@@ -120,9 +120,18 @@ def extendDraw(fn):
          node_add_menu.add_node_type(self.layout, "TestNode")
      return newDraw
 
+backupDraw = bpy.types.NODE_MT_category_shader_output.draw
+
 def extendExistingCategory():
     category = bpy.types.NODE_MT_category_shader_output
+    global backupDraw
+    backupDraw = category.draw
     category.draw = extendDraw(category.draw)
+    
+def revertExistingCategory():
+    category = bpy.types.NODE_MT_category_shader_output
+    global backupDraw
+    category.draw = backupDraw
 
 def register():
     bpy.utils.register_class(NODE_MT_category_shader_test)
@@ -133,6 +142,7 @@ def register():
 
 
 def unregister():
+    #revertExistingCategory()
     bpy.types.NODE_MT_shader_node_add_all.remove(testNodeDrawInNew)
     bpy.utils.unregister_class(NODE_MT_category_shader_test)
     bpy.utils.unregister_class(TestNode)
