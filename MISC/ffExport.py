@@ -22,7 +22,7 @@ bl_info = {
     "category": "Import-Export"
 }
 
-class FFPanel(bpy.types.Panel):
+class FFE_PT_Panel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_context = "objectmode"
@@ -41,7 +41,7 @@ class FFPanel(bpy.types.Panel):
         col.operator("ffexport.render", text="Render")
         col.prop(context.scene, "ffExamples")
 
-class FFRender(bpy.types.Operator):
+class FFE_OT_Render(bpy.types.Operator):
     """ Renders the animation using FFmpeg
     """
     bl_idname = "ffexport.render"
@@ -116,8 +116,8 @@ def updateExample(self, context):
         context.scene.ffOutput = "example.gif"
 
 def register():
-    bpy.utils.register_class(FFPanel)
-    bpy.utils.register_class(FFRender)
+    bpy.utils.register_class(FFE_PT_Panel)
+    bpy.utils.register_class(FFE_OT_Render)
     bpy.types.Scene.ffPath = bpy.props.StringProperty(name="FFmpeg path", subtype="FILE_PATH", description="The path to the ffmpeg binary", default="ffmpeg")
     bpy.types.Scene.ffOutput = bpy.props.StringProperty(name="Output file", subtype="FILE_PATH", description="The output file with extension", default="myFile.mkv")
     bpy.types.Scene.ffParams = bpy.props.StringProperty(name="FFmpeg params", description="The ffmpeg parameters", default="-c:v libx265 -crf 28")
@@ -127,8 +127,8 @@ def register():
     bpy.types.Scene.ffExamples = bpy.props.EnumProperty(name="Examples", description="Sets the params to the selected example", items=[("none","none", ""), ("h.265","h.265", ""), ("hevc_nvenc","hevc_nvenc", ""), ("AV1","AV1", ""), ("gif", "gif", "")], update=updateExample)
     
 def unregister():
-    bpy.utils.unregister_class(FFPanel)
-    bpy.utils.unregister_class(FFRender)
+    bpy.utils.unregister_class(FFE_PT_Panel)
+    bpy.utils.unregister_class(FFE_OT_Render)
     
 if __name__ == "__main__" :
     register()        
