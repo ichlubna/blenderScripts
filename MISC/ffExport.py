@@ -4,32 +4,27 @@ import shlex
 import shutil
 import subprocess
 
-
 bl_info = {
-    "name": "External FFmpeg interop",
-    "description":
-        "Allows to export the animation with external FFmpeg and all available formats.",
+    "name": "FFmpeg Export",
+    "description": "Allows to export the animation with external FFmpeg and all available formats.",
     "author": "ichlubna",
-    "version": (1, 0),
-    "blender": (3, 1, 0),
-    "location": "3D View side panel",
+    "version": (1, 1),
+    "blender": (4, 2, 3),
+    "location": "Render Properties",
     "warning": "",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
-                "Scripts/My_Script",
-    "tracker_url":
-        "https://github.com/ichlubna/blenderScripts",
+    "tracker_url": "https://github.com/ichlubna/blenderScripts",
     "support": "COMMUNITY",
     "category": "Import-Export"
 }
 
-class FFPanel(bpy.types.Panel):
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_context = "objectmode"
-    bl_category = "FFExport"
-    bl_label = "Exports the animation using full external FFmpeg"
+class FFE_PT_Panel(bpy.types.Panel):
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "render"
+    bl_label = "FFmpeg Export"
 
     def draw(self, context):
+        self.layout.label(text="Exports the animation using full external FFmpeg")
         col = self.layout.column(align=True)
         col.prop(context.scene, "ffPath")
         col.prop(context.scene, "ffOutput")
@@ -41,7 +36,7 @@ class FFPanel(bpy.types.Panel):
         col.operator("ffexport.render", text="Render")
         col.prop(context.scene, "ffExamples")
 
-class FFRender(bpy.types.Operator):
+class FFE_OT_Render(bpy.types.Operator):
     """ Renders the animation using FFmpeg
     """
     bl_idname = "ffexport.render"
@@ -116,8 +111,10 @@ def updateExample(self, context):
         context.scene.ffOutput = "example.gif"
 
 def register():
-    bpy.utils.register_class(FFPanel)
-    bpy.utils.register_class(FFRender)
+    if bpy.app.background:
+        return # avoid running in Blender CLI
+    bpy.utils.register_class(FFE_PT_Panel)
+    bpy.utils.register_class(FFE_OT_Render)
     bpy.types.Scene.ffPath = bpy.props.StringProperty(name="FFmpeg path", subtype="FILE_PATH", description="The path to the ffmpeg binary", default="ffmpeg")
     bpy.types.Scene.ffOutput = bpy.props.StringProperty(name="Output file", subtype="FILE_PATH", description="The output file with extension", default="myFile.mkv")
     bpy.types.Scene.ffParams = bpy.props.StringProperty(name="FFmpeg params", description="The ffmpeg parameters", default="-c:v libx265 -crf 28")
@@ -127,8 +124,8 @@ def register():
     bpy.types.Scene.ffExamples = bpy.props.EnumProperty(name="Examples", description="Sets the params to the selected example", items=[("none","none", ""), ("h.265","h.265", ""), ("hevc_nvenc","hevc_nvenc", ""), ("AV1","AV1", ""), ("gif", "gif", "")], update=updateExample)
     
 def unregister():
-    bpy.utils.unregister_class(FFPanel)
-    bpy.utils.unregister_class(FFRender)
+    bpy.utils.unregister_class(FFE_PT_Panel)
+    bpy.utils.unregister_class(FFE_OT_Render)
     
 if __name__ == "__main__" :
     register()        
