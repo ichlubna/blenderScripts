@@ -22,6 +22,7 @@ class FFE_PT_Panel(bpy.types.Panel):
     bl_region_type = "WINDOW"
     bl_context = "render"
     bl_label = "FFmpeg Export"
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         self.layout.label(text="Exports the animation using full external FFmpeg")
