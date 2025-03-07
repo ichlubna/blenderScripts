@@ -12,5 +12,5 @@ lfAssets.py - generates a virtual LF window from input grid - LF images - can be
 bakeAll.py - bakes all simulations (usage: blender untitled.blend -b -P bakeAll.py)\
 matchFPS.py - transforms the imported strip in VSE into the project FPS\
 scaleOptical.py - scales the selected objects according to camera\
-ffExport.py - connects Blender to external ffmpeg, allowing a direct encoding to all supported formats like gif of h.265
+ffExport.py - connects Blender to external ffmpeg, allowing a direct encoding to all supported formats like gif of h.265\
 customNode.py - example of creating a custom material node which renders the scene and uses the render as a material texture
