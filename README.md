@@ -1,7 +1,7 @@
 # Some useful Blender scripts
 
 ## VFX
-lightning.py - compositor node for 2D lightning effect - working but not finished since custom nodes struggle with input sockets\
+lightning.py - compositor node for 2D lightning effect - working but not finished since custom nodes struggle with input sockets
 
 ## LF
 cameras.py - generates grid of cameras for lightfield or LKG\
