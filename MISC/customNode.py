@@ -4,6 +4,7 @@ import tempfile
 import string
 import random
 import os
+import shutil
 
 class RenderImage(bpy.types.Operator):
     """ Renders the scene, stores it in a file, loads the file back in Blender.
@@ -18,19 +19,17 @@ class RenderImage(bpy.types.Operator):
         backupPath = renderInfo.filepath[:]
         backupFormat = renderInfo.image_settings.file_format
         backupPercent = renderInfo.resolution_percentage  
-            
-        with tempfile.TemporaryDirectory() as temp:
-            file = os.path.join(temp, self.fileName)
-            renderInfo.image_settings.file_format = "PNG"
-            renderInfo.resolution_percentage = self.percentage
-            renderInfo.filepath = file
-            bpy.ops.render.render(write_still=True)
-            
-            image = bpy.data.images.get(self.fileName, None)
-            image.source = 'FILE'
-            image.filepath = file
-            image.reload()
-            image.update()
+           
+        renderInfo.image_settings.file_format = "PNG"
+        renderInfo.resolution_percentage = self.percentage
+        renderInfo.filepath = self.fileName
+        bpy.ops.render.render(write_still=True)
+        
+        image = bpy.data.images.get(self.fileName, None)
+        image.source = 'FILE'
+        image.filepath = self.fileName
+        image.reload()
+        image.update()
              
         renderInfo.filepath = backupPath[:]   
         renderInfo.image_settings.file_format = backupFormat  
@@ -67,8 +66,10 @@ class TestNode (bpy.types.ShaderNodeCustomGroup):
         inNode = self.node_tree.nodes.new(type='NodeGroupInput')
         outNode = self.node_tree.nodes.new(type='NodeGroupOutput')
 
-        imageNode = self.node_tree.nodes.new("ShaderNodeTexImage")
+        imageNode = self.node_tree.nodes.new("ShaderNodeTexEnvironment")
         self.fileName = str((''.join(random.choices(string.ascii_letters, k=5))) + ".png")
+        temp = tempfile.TemporaryDirectory().name 
+        self.fileName = os.path.join(temp, self.fileName)
         imageNode.name = 'resultImageNode'
         for image in bpy.data.images:
             if image.name == self.fileName:
@@ -99,6 +100,7 @@ class TestNode (bpy.types.ShaderNodeCustomGroup):
 
     def free(self):
         bpy.data.node_groups.remove(self.node_tree, do_unlink=True)
+        shutil.rmtree()(self.fileName)
         return
 
 class NODE_MT_category_shader_test(bpy.types.Menu):
