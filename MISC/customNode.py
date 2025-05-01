@@ -100,7 +100,7 @@ class TestNode (bpy.types.ShaderNodeCustomGroup):
 
     def free(self):
         bpy.data.node_groups.remove(self.node_tree, do_unlink=True)
-        shutil.rmtree()(self.fileName)
+        shutil.rmtree(os.path.dirname(self.fileName))
         return
 
 class NODE_MT_category_shader_test(bpy.types.Menu):
