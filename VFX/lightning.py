@@ -2,7 +2,6 @@ import bpy
 import random
 import math
 import gpu
-import bgl
 import numpy as np
 import mathutils
 import bl_math
@@ -20,8 +19,8 @@ bl_info = {
         "Adds a new node in compositor that generates an electric lightning effect.",
     "author": "ichlubna",
     "version": (1, 0),
-    "blender": (2, 80, 0),
-    "location": "Compositing > Add > Generate > Lightning",
+    "blender": (5, 0, 0),
+    "location": "Compositing > Add > Input > Lightning",
     "warning": "",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/"
                 "Scripts/My_Script",
@@ -181,65 +180,9 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         pixels.foreach_set(bitmap)
                     
     def drawBoltGPU(self, lines, pixels, coord, w, h):
-        vertexSource= '''
-            in vec3 position;
-            void main() 
-            {
-                gl_Position = vec4(position, 1.0);
-            }
-            '''
-        geometrySource= '''
-            layout(lines) in;
-            layout(triangle_strip, max_vertices = 4) out;
-            void main() 
-            {
-                float width = gl_in[1].gl_Position.z;
-                vec2 line = gl_in[1].gl_Position.xy - gl_in[0].gl_Position.xy;
-                vec2 normal = normalize(vec2(line.y, -line.x))*(width/2.0);
-                for(int i=0; i<4; i++)
-                {
-                    vec2 coords = gl_in[i/2].gl_Position.xy+(1-2*(i%2))*normal;
-                    gl_Position = vec4(coords, 0.0, 1.0);
-                    EmitVertex();
-                }
-                EndPrimitive();
-            }
-            '''
-        fragmentSource = '''
-            out vec4 fragColor;
-            void main()
-            {
-                fragColor = vec4(1.0,1.0,1.0,1.0);
-            }
-            '''
-        positions = []
-        for segment in lines.segments:
-            pts = lines.getCoords(segment)[0]
-            ptA = np.divide(pts[0], np.array([w,h]))*2-1.0
-            ptB = np.divide(pts[1], np.array([w,h]))*2-1.0
-            width = bl_math.clamp(self.thickness*(1.0-(segment.level/(self.falloff*lines.getMaxLevel()))), 0, self.thickness)/w
-            positions.append((ptA[0], ptA[1], width))
-            positions.append((ptB[0], ptB[1], width))
-        offscreen = gpu.types.GPUOffScreen(w, h)
-        shaders = gpu.types.GPUShader(vertexSource, fragmentSource, geocode=geometrySource)
-        batch = batch_for_shader(shaders, 'LINES', {"position": tuple(positions)})
-        with offscreen.bind():
-            bgl.glClearColor(0.0, 0.0, 0.0, 1.0)
-            bgl.glClear(bgl.GL_COLOR_BUFFER_BIT)
-            with gpu.matrix.push_pop():
-                gpu.matrix.load_matrix(mathutils.Matrix.Identity(4))
-                gpu.matrix.load_projection_matrix(mathutils.Matrix.Identity(4))
-                shaders.bind()
-                batch.draw(shaders)
-            buffer = bgl.Buffer(bgl.GL_FLOAT, w * h * 4)
-            bgl.glReadBuffer(bgl.GL_BACK)
-            bgl.glReadPixels(0, 0, w, h, bgl.GL_RGBA, bgl.GL_FLOAT, buffer)
-        pixels.foreach_set(buffer)
-        offscreen.free()
+        print("Not implemented.")
 
     def update_effect(self, context):
-        if (bpy.context.scene.use_nodes == False):
-            return
         scene = bpy.context.scene
         img = bpy.data.images[self.name]
         coords = [0, 0, 0, 0]
@@ -256,6 +199,8 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
                     coords[i] = int(markerPosition[xy]*inputNode.clip.size[xy])
                 else:
                     bpy.context.scene.node_tree.links.remove(self.inputs[inputs[i]].links[0])
+        if(abs(coords[0]-coords[2]) + abs(coords[1]-coords[3]) < 0.0001):
+            return
         start = time.time()
         lines = self.generateBolt(np.array([coords[0],coords[1]]), np.array([coords[2],coords[3]]))
         if(self.gpuComp):
@@ -264,14 +209,11 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
             self.drawBolt(lines, img.pixels, coords, img.size[0], img.size[1])
 
         end = time.time()
-        print(end - start)
         img.update()
         coreBlurNode = self.node_tree.nodes.get('coreBlurNode')
-        coreBlurNode.size_x = self.coreBlur
-        coreBlurNode.size_y = self.coreBlur
+        coreBlurNode.inputs[1].default_value = (self.coreBlur, self.coreBlur)
         glowBlurNode = self.node_tree.nodes.get('glowBlurNode')
-        glowBlurNode.size_x = self.glow
-        glowBlurNode.size_y = self.glow
+        glowBlurNode.inputs[1].default_value = (self.glow, self.glow)
         return
 
     forking: bpy.props.FloatProperty(name="Forking",
@@ -324,20 +266,22 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         bpy.data.images.new(name=self.name, width=scene.render.resolution_x, height=scene.render.resolution_y)
 
         self.node_tree = bpy.data.node_groups.new(self.bl_name, 'CompositorNodeTree')
-        inputs = self.node_tree.nodes.new('NodeGroupInput')
-        outputs = self.node_tree.nodes.new('NodeGroupOutput')
-        self.node_tree.inputs.new("NodeSocketColor", "Glow color")
-        self.node_tree.inputs.new("NodeSocketInt", "Start X")
-        self.node_tree.inputs.new("NodeSocketInt", "Start Y")
-        self.node_tree.inputs.new("NodeSocketInt", "End X")
-        self.node_tree.inputs.new("NodeSocketInt", "End Y")
-        self.node_tree.outputs.new("NodeSocketColor", "Image")
+        group_input = self.node_tree.nodes.new('NodeGroupInput')
+        group_output = self.node_tree.nodes.new('NodeGroupOutput')
+
+        interface = self.node_tree.interface
+        interface.new_socket(name="Glow color", in_out='INPUT', socket_type='NodeSocketColor')
+        interface.new_socket(name="Start X", in_out='INPUT', socket_type='NodeSocketInt')
+        interface.new_socket(name="Start Y", in_out='INPUT', socket_type='NodeSocketInt')
+        interface.new_socket(name="End X", in_out='INPUT', socket_type='NodeSocketInt')
+        interface.new_socket(name="End Y", in_out='INPUT', socket_type='NodeSocketInt')
+        interface.new_socket(name="Image", in_out='OUTPUT', socket_type='NodeSocketColor')
         
-        self.inputs["Start X"].default_value=scene.render.resolution_x/3
-        self.inputs["Start Y"].default_value=scene.render.resolution_y/2
-        self.inputs["End X"].default_value=scene.render.resolution_x-scene.render.resolution_x/3
-        self.inputs["End Y"].default_value=scene.render.resolution_y/2
-        self.inputs["Glow color"].default_value = [0.0, 0.27, 1.0, 1.0]
+        self.inputs["Start X"].default_value = int(scene.render.resolution_x / 3)
+        self.inputs["Start Y"].default_value = int(scene.render.resolution_y / 2)
+        self.inputs["End X"].default_value = int(scene.render.resolution_x - scene.render.resolution_x / 3)
+        self.inputs["End Y"].default_value = int(scene.render.resolution_y / 2)
+        self.inputs["Glow color"].default_value = (0.0, 0.27, 1.0, 1.0)
 
         imageNode = self.node_tree.nodes.new("CompositorNodeImage")
         imageNode.name = 'resultImageNode'
@@ -345,39 +289,42 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
 
         coreBlurNode = self.node_tree.nodes.new("CompositorNodeBlur")
         coreBlurNode.name = 'coreBlurNode'
-        coreBlurNode.filter_type = 'FAST_GAUSS'
+        coreBlurNode.inputs[2].default_value = 'Fast Gaussian'
 
         glowBlurNode = self.node_tree.nodes.new("CompositorNodeBlur")
         glowBlurNode.name = 'glowBlurNode'
-        glowBlurNode.filter_type = 'FAST_GAUSS'
+        glowBlurNode.inputs[2].default_value = 'Fast Gaussian'
 
-        mixNode = self.node_tree.nodes.new("CompositorNodeMixRGB")
+        mixNode = self.node_tree.nodes.new("ShaderNodeMix")
         mixNode.name = 'mixNode'
+        mixNode.data_type = 'RGBA'
+        mixNode.inputs[0].default_value = 1.0
         mixNode.blend_type = 'ADD'
 
-        colorizeNode = self.node_tree.nodes.new("CompositorNodeMixRGB")
+        colorizeNode = self.node_tree.nodes.new("ShaderNodeMix")
         colorizeNode.name = 'colorizeNode'
-        colorizeNode.blend_type = 'MIX'
-        colorizeNode.inputs[1].default_value = (0.0, 0.0, 0.0, 1.0)
-        colorizeNode.inputs[2].default_value = (0.0, 0.0, 1.0, 1.0)
+        colorizeNode.data_type = 'RGBA'
+        colorizeNode.blend_type = 'COLOR'
+        colorizeNode.inputs[0].default_value = 1.0
+        colorizeNode.inputs[7].default_value = (0.0, 0.0, 1.0, 1.0)
 
         self.outputs['Image'].default_value = imageNode.outputs[0].default_value
+        self.node_tree.links.new(group_input.outputs[0], colorizeNode.inputs[7])
         self.node_tree.links.new(imageNode.outputs[0], coreBlurNode.inputs[0])
         self.node_tree.links.new(imageNode.outputs[0], glowBlurNode.inputs[0])
-        self.node_tree.links.new(coreBlurNode.outputs[0], mixNode.inputs[1])
-        self.node_tree.links.new(glowBlurNode.outputs[0], colorizeNode.inputs[0])
-        self.node_tree.links.new(self.node_tree.nodes['Group Input'].outputs[0], colorizeNode.inputs[2])
-        self.node_tree.links.new(colorizeNode.outputs[0], mixNode.inputs[2])
-        self.node_tree.links.new(mixNode.outputs[0], self.node_tree.nodes['Group Output'].inputs[0])
+        self.node_tree.links.new(coreBlurNode.outputs[0], mixNode.inputs[7])
+        self.node_tree.links.new(glowBlurNode.outputs[0], colorizeNode.inputs[6])
+        self.node_tree.links.new(colorizeNode.outputs[2], mixNode.inputs[6])
+        self.node_tree.links.new(mixNode.outputs[2], group_output.inputs[0])
 
         # WORKAROUND since socket update is not working
-        def update(dummy):
-            if self.name != "":
-                self.update_effect(bpy.context)
-        bpy.app.driver_namespace[self.name] = update
-        bpy.app.handlers.depsgraph_update_pre.append(update)
-        bpy.app.handlers.frame_change_post.append(update)
-        bpy.app.handlers.render_post.append(update)
+        #def update(dummy):
+        #    if self.name != "":
+        #        self.update_effect(bpy.context)
+        #bpy.app.driver_namespace[self.name] = update
+        #bpy.app.handlers.depsgraph_update_pre.append(update)
+        #bpy.app.handlers.frame_change_post.append(update)
+        #bpy.app.handlers.render_post.append(update)
 
     def draw_buttons(self, context, layout):
         row = layout.row()
@@ -413,23 +360,24 @@ class LightningGen (bpy.types.CompositorNodeCustomGroup):
         img.user_clear()
         bpy.data.images.remove(img)
         #WORKAROUND TO FIX NOT UPDATING OF CUSTOM PROPERTIES
-        bpy.app.handlers.depsgraph_update_pre.remove(bpy.app.driver_namespace[self.name])
-        bpy.app.handlers.frame_change_post.remove(bpy.app.driver_namespace[self.name])
-        bpy.app.handlers.render_post.remove(bpy.app.driver_namespace[self.name])
+        #bpy.app.handlers.depsgraph_update_pre.remove(bpy.app.driver_namespace[self.name])
+        #bpy.app.handlers.frame_change_post.remove(bpy.app.driver_namespace[self.name])
+        #bpy.app.handlers.render_post.remove(bpy.app.driver_namespace[self.name])
         del bpy.app.driver_namespace[self.name]
 
+def menu_func_input(self, context):
+    self.layout.operator(
+        "node.add_node",
+        text="Lightning Generator"
+    ).type = "LightningGen"
 
 def register():
     bpy.utils.register_class(LightningGen)
-    newcatlist = [CompositorNodeCategory(
-        "CP_GENERATE",
-        "Generate",
-        items=[nodeitems_utils.NodeItem("LightningGen")])]
-    nodeitems_utils.register_node_categories("GENERATE_NODES", newcatlist)
+    bpy.types.NODE_MT_category_compositor_input.append(menu_func_input)
 
 
 def unregister():
-    nodeitems_utils.unregister_node_categories("GENERATE_NODES")
+    bpy.types.NODE_MT_category_compositor_input.remove(menu_func_input)
     bpy.utils.unregister_class(LightningGen)
 
 try:
